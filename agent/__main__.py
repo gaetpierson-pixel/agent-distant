@@ -7,6 +7,7 @@
 
 import asyncio
 import logging
+import os
 import sys
 
 from .brain import Brain
@@ -22,6 +23,15 @@ def main() -> None:
 
     if cmd == "demander":
         print(asyncio.run(Brain(cfg).handle(" ".join(sys.argv[2:]), channel="terminal")))
+        return
+
+    if cmd == "lancer" and os.getenv("GMAIL_APP_PASSWORD"):
+        # Connexion simple à Gmail par mot de passe d'application : pas d'agenda.
+        from . import email_channel
+        from .imap_mail import ImapMail
+
+        mail = ImapMail(os.environ["GMAIL_ADDRESS"], os.environ["GMAIL_APP_PASSWORD"])
+        asyncio.run(email_channel.run(mail, Brain(cfg, gmail=mail), cfg))
         return
 
     from .agenda import Calendar

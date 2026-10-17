@@ -28,7 +28,15 @@ Sur la page GitHub du dépôt, cliquez sur **Code**, puis sur **Download ZIP**. 
 - vos dossiers de projets et de notes ;
 - l'agenda à gérer.
 
-### 4. Le compte Google de l'agent
+### 4. La boîte Gmail de l'agent (méthode simple, recommandée)
+1. Créez un compte Gmail dédié à l'agent.
+2. Sur ce compte, activez la **Validation en deux étapes** (Compte Google > Sécurité).
+3. Dans la barre de recherche de ce même compte Google, tapez **Mots de passe des applications**. Créez-en un nommé `agent`, puis copiez le code de 16 lettres.
+4. Dans `.env`, remplissez `GMAIL_ADDRESS` (l'adresse de l'agent) et `GMAIL_APP_PASSWORD` (le code).
+
+Avec cette méthode, l'agent lit et répond aux mails, mais n'a pas encore accès à l'agenda.
+
+### 4 bis. Méthode complète avec Google Cloud (agenda inclus)
 1. Créez un compte Gmail dédié à l'agent, par exemple `prenom.agent@gmail.com`.
 2. Avec ce compte, ouvrez la [console Google Cloud](https://console.cloud.google.com/) et créez un projet.
 3. Activez **Gmail API** et **Google Calendar API**.

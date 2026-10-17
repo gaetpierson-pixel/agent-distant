@@ -106,3 +106,58 @@ def test_only_allowed_sender_gets_processed(tmp_path):
     assert gmail.read == ["m1", "m2"]  # tout est marqué lu, même ignoré
     assert gmail.replies == [("gaet.pierson@gmail.com", "C'est noté.")]
     assert brain.calls[0][1] == "email" and "Note : test" in brain.calls[0][0]
+
+
+def test_imap_parse_raw_reads_sender_subject_and_plain_text():
+    from email.message import EmailMessage
+
+    from agent.imap_mail import parse_raw
+
+    m = EmailMessage()
+    m["From"] = "Gaëtan <Gaet.Pierson@gmail.com>"
+    m["Subject"] = "Rappel réunion"
+    m["Message-ID"] = "<x@y>"
+    m.set_content("Note : appeler Paul\n\n> ancien")
+    m.add_alternative("<p>Note</p>", subtype="html")
+    parsed = parse_raw("42", m.as_bytes())
+    assert parsed["from"] == "gaet.pierson@gmail.com"
+    assert parsed["subject"] == "Rappel réunion"
+    assert parsed["body"] == "Note : appeler Paul"
+    assert parsed["id"] == "42"
+
+
+def test_imap_unread_does_not_mark_as_read(monkeypatch):
+    from email.message import EmailMessage
+
+    from agent import imap_mail
+
+    m = EmailMessage()
+    m["From"] = "gaet.pierson@gmail.com"
+    m["Subject"] = "Test"
+    m.set_content("Bonjour")
+    calls = []
+
+    class FakeImap:
+        def __init__(self, host):
+            pass
+
+        def login(self, user, pwd):
+            calls.append(("login", user, pwd))
+
+        def select(self, box):
+            pass
+
+        def uid(self, cmd, *args):
+            calls.append((cmd, args))
+            if cmd == "search":
+                return "OK", [b"7"]
+            return "OK", [(b"7 (BODY[] {10}", m.as_bytes())]
+
+        def logout(self):
+            pass
+
+    monkeypatch.setattr(imap_mail.imaplib, "IMAP4_SSL", FakeImap)
+    mails = imap_mail.ImapMail("pierson.agent@gmail.com", "abcd efgh ijkl mnop").unread()
+    assert mails[0]["body"] == "Bonjour" and mails[0]["id"] == "7"
+    assert ("login", "pierson.agent@gmail.com", "abcdefghijklmnop") in calls
+    assert ("fetch", (b"7", "(BODY.PEEK[])")) in calls
