@@ -1,13 +1,21 @@
 """Le cerveau : reçoit une demande en texte, travaille avec ses outils, renvoie une réponse."""
 
 import json
+import logging
+import re
 from datetime import date, datetime
 from pathlib import Path
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, HookMatcher, ResultMessage, TextBlock, query
 
 from .config import Config, is_inside
+from .routine import fire
+
+log = logging.getLogger(__name__)
 from .tools import build_tools
+
+# « Lance une tâche Claude : … » : lancé directement, sans laisser le modèle choisir de faire le travail lui-même.
+TASK_ASK = re.compile(r"t[âa]ches?\s+claude\b\s*[:,.\-–]?\s*", re.IGNORECASE)
 
 # Outils de base autorisés. Pas de "Bash" : l'agent ne lance aucune commande sur le PC.
 BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch"]
@@ -84,8 +92,20 @@ class Brain:
         sessions[channel] = {"id": session_id, "day": date.today().isoformat()}
         self.sessions_file.write_text(json.dumps(sessions, indent=2), encoding="utf-8")
 
+    def launch_task(self, consigne: str) -> str:
+        try:
+            url = fire(self.cfg.routine_url, self.cfg.routine_token, consigne)
+        except Exception as e:  # noqa: BLE001 - réseau, jeton refusé, limite…
+            log.exception("Échec du lancement de la tâche Claude")
+            return f"Je n'ai pas pu lancer la tâche Claude : {e}"
+        log.info("Tâche Claude lancée : %s", url)
+        return f"Tâche Claude lancée. Suivi : {url}\nLe résultat arrivera par mail."
+
     async def handle(self, text: str, channel: str) -> str:
         """Traite une demande. La conversation continue par canal pendant la journée, puis repart à zéro."""
+        ask = TASK_ASK.search(text)
+        if ask and self.cfg.routine_url and self.cfg.routine_token:
+            return self.launch_task(text[ask.end():].strip() or text)
         previous = self._load_sessions().get(channel)
         resume = previous["id"] if previous and previous["day"] == date.today().isoformat() else None
 

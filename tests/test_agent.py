@@ -429,3 +429,23 @@ def test_routine_fire_sends_text_and_returns_session_link(monkeypatch):
     assert req.get_header("Authorization") == "Bearer sk-ant-oat01-x"
     assert req.get_header("Anthropic-version") == "2023-06-01"
     assert _json.loads(req.data) == {"text": "Fais le point"}
+
+
+def test_task_request_fires_routine_without_the_model(tmp_path, monkeypatch):
+    from agent import brain as brain_mod
+
+    cfg = Config.__new__(Config)
+    cfg.routine_url, cfg.routine_token = "https://api.anthropic.com/x/fire", "jeton"
+    sent = {}
+
+    def fake_fire(url, token, text):
+        sent["text"] = text
+        return "https://claude.ai/code/session_1"
+
+    monkeypatch.setattr(brain_mod, "fire", fake_fire)
+    b = brain_mod.Brain.__new__(brain_mod.Brain)
+    b.cfg = cfg
+    text = "[Message vocal, transcription automatique]\nLance une tâche Claude : fais un point sur l'IA."
+    answer = asyncio.run(b.handle(text, channel="telegram"))
+    assert sent["text"] == "fais un point sur l'IA."
+    assert "https://claude.ai/code/session_1" in answer
