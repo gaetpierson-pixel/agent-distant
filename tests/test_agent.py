@@ -246,3 +246,22 @@ def test_telegram_answers_owner_and_tells_strangers_their_id(tmp_path):
     assert "vocaux" in bot.sent[2][1]
     assert "Lis-la avec l'outil Read" in bot.sent[3][1]
     assert list((cfg.notes_dir / "medias").glob("*_photo.jpg"))
+
+
+def test_voice_decode_gives_16khz_mono(tmp_path):
+    import av
+    import numpy as np
+
+    from agent.voice import decode
+
+    path = tmp_path / "vocal.ogg"
+    with av.open(str(path), "w", format="ogg") as c:
+        s = c.add_stream("libopus", rate=48000)
+        frame = av.AudioFrame.from_ndarray(np.zeros((1, 48000), dtype="int16"), format="s16", layout="mono")
+        frame.sample_rate = 48000
+        for p in s.encode(frame):
+            c.mux(p)
+        for p in s.encode(None):
+            c.mux(p)
+    audio = decode(path)
+    assert audio.dtype == np.float32 and 15000 < len(audio) < 17500
