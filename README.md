@@ -78,4 +78,4 @@ python -m pytest
 ```
 
 ## Étapes suivantes
-3. Appel téléphonique.
+1. Appel téléphonique.
