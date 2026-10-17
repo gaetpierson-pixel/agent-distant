@@ -34,7 +34,9 @@ Sur la page GitHub du dépôt, cliquez sur **Code**, puis sur **Download ZIP**. 
 3. Dans la barre de recherche de ce même compte Google, tapez **Mots de passe des applications**. Créez-en un nommé `agent`, puis copiez le code de 16 lettres.
 4. Dans `.env`, remplissez `GMAIL_ADDRESS` (l'adresse de l'agent) et `GMAIL_APP_PASSWORD` (le code).
 
-Avec cette méthode, l'agent lit et répond aux mails, mais n'a pas encore accès à l'agenda.
+Avec cette méthode, l'agent lit et répond aux mails. Pour l'agenda, sans Google Cloud :
+5. Dans Google Agenda (sur ordinateur) : roue dentée > **Paramètres** > votre agenda > **Intégrer l'agenda**, copiez l'**Adresse secrète au format iCal** et collez-la dans `CALENDAR_ICS_URL`. Ne la partagez pas ; en cas de fuite, cliquez sur **Réinitialiser**.
+6. Ajoutez l'adresse de l'agent à vos contacts Google : ses invitations s'ajouteront alors à votre agenda. L'agent lit l'agenda et ajoute des rendez-vous par invitation ; il ne peut ni modifier ni supprimer un rendez-vous.
 
 ### 4 bis. Méthode complète avec Google Cloud (agenda inclus)
 1. Créez un compte Gmail dédié à l'agent, par exemple `prenom.agent@gmail.com`.
