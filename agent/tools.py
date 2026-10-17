@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import Config, is_inside
 from .documents import extract
+from .routine import fire
 from .notes import add_note
 
 
@@ -71,7 +72,21 @@ def build_tools(cfg: Config, gmail=None, calendar=None):
         except Exception as e:  # noqa: BLE001 - fichier abîmé, protégé par mot de passe…
             return _text(f"Impossible de lire ce fichier : {e}")
 
-    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document]
+    @tool(
+        "lancer_tache_claude",
+        "Lance une tâche longue chez Claude, dans le cloud (sans accès aux fichiers du PC). "
+        "Donne une consigne complète et autonome. Renvoie le lien de la session à transmettre à Gaëtan.",
+        {"consigne": str},
+    )
+    async def lancer_tache_claude(args):
+        if not (cfg.routine_url and cfg.routine_token):
+            return _text("Les tâches Claude ne sont pas configurées (ROUTINE_URL et ROUTINE_TOKEN).")
+        try:
+            return _text(f"Tâche lancée. Lien de la session : {fire(cfg.routine_url, cfg.routine_token, args['consigne'])}")
+        except Exception as e:  # noqa: BLE001 - réseau, jeton refusé, limite horaire…
+            return _text(f"Échec du lancement : {e}")
+
+    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude]
     server = create_sdk_mcp_server(name="perso", tools=tools)
     names = [f"mcp__perso__{t.name}" for t in tools]
     return server, names

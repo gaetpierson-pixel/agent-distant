@@ -408,3 +408,24 @@ def test_wav_to_ogg_makes_a_readable_voice_file(tmp_path):
     with av.open(str(ogg)) as c:
         assert c.streams.audio[0].codec_context.name == "opus"
         assert 0.9 < float(c.duration) / 1_000_000 < 1.2
+
+
+def test_routine_fire_sends_text_and_returns_session_link(monkeypatch):
+    import io
+    import json as _json
+
+    from agent import routine
+
+    seen = {}
+
+    def fake_urlopen(req, timeout):
+        seen["req"] = req
+        return io.BytesIO(_json.dumps({"type": "routine_fire", "claude_code_session_url": "https://claude.ai/code/session_X"}).encode())
+
+    monkeypatch.setattr(routine.urllib.request, "urlopen", fake_urlopen)
+    link = routine.fire("https://api.anthropic.com/v1/claude_code/routines/trig_1/fire", "sk-ant-oat01-x", "Fais le point")
+    req = seen["req"]
+    assert link == "https://claude.ai/code/session_X"
+    assert req.get_header("Authorization") == "Bearer sk-ant-oat01-x"
+    assert req.get_header("Anthropic-version") == "2023-06-01"
+    assert _json.loads(req.data) == {"text": "Fais le point"}
