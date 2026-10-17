@@ -2,7 +2,7 @@
 
   python -m agent demander "ta demande"   -> teste le cerveau seul, dans le terminal
   python -m agent connecter               -> autorise l'accès au compte Google de l'agent
-  python -m agent lancer                  -> démarre l'agent (canal e-mail)
+  python -m agent lancer                  -> démarre l'agent (mail, et WhatsApp si Twilio est réglé)
 """
 
 import asyncio
@@ -12,6 +12,21 @@ import sys
 
 from .brain import Brain
 from .config import load_config
+
+
+async def _run_channels(email_task, brain: Brain, cfg) -> None:
+    """Le mail tourne toujours ; WhatsApp s'ajoute si les réglages Twilio sont remplis."""
+    tasks = [email_task]
+    if os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN"):
+        from . import whatsapp_channel
+
+        wa = whatsapp_channel.TwilioWhatsApp(
+            os.environ["TWILIO_ACCOUNT_SID"],
+            os.environ["TWILIO_AUTH_TOKEN"],
+            os.getenv("TWILIO_WHATSAPP_NUMBER", "+14155238886"),
+        )
+        tasks.append(whatsapp_channel.run(wa, brain, cfg))
+    await asyncio.gather(*tasks)
 
 
 def main() -> None:
@@ -31,7 +46,8 @@ def main() -> None:
         from .imap_mail import ImapMail
 
         mail = ImapMail(os.environ["GMAIL_ADDRESS"], os.environ["GMAIL_APP_PASSWORD"])
-        asyncio.run(email_channel.run(mail, Brain(cfg, gmail=mail), cfg))
+        brain = Brain(cfg, gmail=mail)
+        asyncio.run(_run_channels(email_channel.run(mail, brain, cfg), brain, cfg))
         return
 
     from .agenda import Calendar
@@ -47,7 +63,7 @@ def main() -> None:
 
         gmail = Gmail(creds)
         brain = Brain(cfg, gmail=gmail, calendar=Calendar(creds, cfg.calendar_id))
-        asyncio.run(email_channel.run(gmail, brain, cfg))
+        asyncio.run(_run_channels(email_channel.run(gmail, brain, cfg), brain, cfg))
         return
     print(__doc__)
 

@@ -23,7 +23,15 @@ class Config:
     # Plafond de dépense par tâche, en dollars.
     max_budget_usd: float = 0.50
     poll_seconds: int = 60
+    # Numéros WhatsApp autorisés (format whatsapp:+33...), et fréquence de lecture de WhatsApp.
+    whatsapp_allowed: list[str] = field(default_factory=list)
+    whatsapp_poll_seconds: int = 20
     state_dir: Path = ROOT / "state"
+
+
+def _wa(number: str) -> str:
+    number = number.strip().replace(" ", "")
+    return number if number.startswith("whatsapp:") else f"whatsapp:{number}"
 
 
 def load_config() -> Config:
@@ -37,6 +45,8 @@ def load_config() -> Config:
         model=os.getenv("CLAUDE_MODEL", "claude-sonnet-5-5"),
         max_budget_usd=float(os.getenv("MAX_BUDGET_USD", "0.50")),
         poll_seconds=int(os.getenv("POLL_SECONDS", "60")),
+        whatsapp_allowed=[_wa(n) for n in os.getenv("WHATSAPP_ALLOWED", "").split(",") if n.strip()],
+        whatsapp_poll_seconds=int(os.getenv("WHATSAPP_POLL_SECONDS", "20")),
     )
     for d in (cfg.projects_dir, cfg.notes_dir, cfg.state_dir):
         d.mkdir(parents=True, exist_ok=True)

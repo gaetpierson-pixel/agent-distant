@@ -45,6 +45,13 @@ Avec cette méthode, l'agent lit et répond aux mails, mais n'a pas encore accè
 6. Depuis **votre** Google Agenda, partagez votre agenda avec l'adresse de l'agent, avec le droit de modifier les événements.
 7. Dans l'Explorateur, ouvrez le dossier de l'agent, cliquez dans la barre d'adresse, tapez `cmd` puis Entrée. Dans la fenêtre noire, lancez `.venv\Scripts\python -m agent connecter`. Le navigateur s'ouvre : connectez-vous **avec le compte de l'agent** et acceptez.
 
+### 5. WhatsApp (via Twilio, en essai)
+L'agent va chercher vos messages WhatsApp chez Twilio toutes les 20 secondes : pas besoin d'ouvrir le PC sur Internet.
+1. Créez un compte sur [twilio.com](https://www.twilio.com/).
+2. Dans la console Twilio, ouvrez **Messaging > Try it out > Send a WhatsApp message**. Depuis votre téléphone, envoyez le message `join ...` indiqué au numéro du bac à sable. Le bac à sable sert aux essais : il faut renvoyer ce message tous les 3 jours.
+3. Dans `.env`, remplissez `TWILIO_ACCOUNT_SID` et `TWILIO_AUTH_TOKEN` (page d'accueil de la console), `TWILIO_WHATSAPP_NUMBER` (le numéro du bac à sable) et `WHATSAPP_ALLOWED` (votre portable, par exemple `+33612345678`).
+4. Relancez l'agent. Pour l'instant, il lit le texte ; les vocaux et les photos viendront ensuite.
+
 ## Utilisation
 
 - Tester le cerveau seul (dans la même fenêtre `cmd`) : `.venv\Scripts\python -m agent demander "Quels sont mes rendez-vous demain ?"`
@@ -69,6 +76,6 @@ python -m pytest
 ```
 
 ## Étapes suivantes
-1. WhatsApp texte.
+1. WhatsApp avec un vrai numéro (au lieu du bac à sable).
 2. WhatsApp vocal et photos de notes manuscrites.
 3. Appel téléphonique.

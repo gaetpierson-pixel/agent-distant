@@ -161,3 +161,47 @@ def test_imap_unread_does_not_mark_as_read(monkeypatch):
     assert mails[0]["body"] == "Bonjour" and mails[0]["id"] == "7"
     assert ("login", "pierson.agent@gmail.com", "abcdefghijklmnop") in calls
     assert ("fetch", (b"7", "(BODY.PEEK[])")) in calls
+
+
+class _FakeWA:
+    def __init__(self, msgs):
+        self.msgs, self.sent = msgs, []
+
+    def incoming(self):
+        return self.msgs
+
+    def send(self, to, text):
+        self.sent.append((to, text))
+
+
+class _FakeBrain:
+    async def handle(self, text, channel):
+        return f"vu : {text}"
+
+
+def test_whatsapp_skips_history_then_answers_only_allowed(tmp_path):
+    from agent.whatsapp_channel import Seen, process_once
+
+    cfg = _cfg(tmp_path)
+    cfg.state_dir.mkdir(parents=True)
+    cfg.whatsapp_allowed = ["whatsapp:+33600000000"]
+    old = {"id": "SM0", "from": "whatsapp:+33600000000", "body": "ancien", "num_media": 0}
+    wa = _FakeWA([old])
+    seen = Seen(cfg)
+    assert asyncio.run(process_once(wa, _FakeBrain(), cfg, seen)) == 0
+    wa.msgs = [
+        old,
+        {"id": "SM1", "from": "whatsapp:+33611111111", "body": "intrus", "num_media": 0},
+        {"id": "SM2", "from": "whatsapp:+33600000000", "body": "Note : pain", "num_media": 0},
+    ]
+    assert asyncio.run(process_once(wa, _FakeBrain(), cfg, seen)) == 1
+    assert wa.sent == [("whatsapp:+33600000000", "vu : Note : pain")]
+    # Redémarrage : rien n'est retraité.
+    assert asyncio.run(process_once(wa, _FakeBrain(), cfg, Seen(cfg))) == 0
+
+
+def test_split_text_keeps_chunks_under_limit():
+    from agent.whatsapp_channel import split_text
+
+    parts = split_text("ligne\n" * 600)
+    assert len(parts) > 1 and all(len(p) <= 1500 for p in parts)
