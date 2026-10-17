@@ -29,6 +29,9 @@ class Config:
     read_only_dirs: list[Path] = field(default_factory=list)
     # Modèle de transcription des vocaux (tiny, base, small, medium) : plus gros = plus juste mais plus lent.
     whisper_model: str = "small"
+    # Répondre en vocal aux vocaux (voix de synthèse Piper, fabriquée sur le PC).
+    voice_replies: bool = True
+    tts_voice: str = "fr_FR-siwis-medium"
     state_dir: Path = ROOT / "state"
 
 
@@ -55,6 +58,8 @@ def load_config() -> Config:
         poll_seconds=int(os.getenv("POLL_SECONDS", "60")),
         telegram_allowed=[int(n) for n in (os.getenv("TELEGRAM_ALLOWED") or os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")).split(",") if n.strip()],
         whisper_model=os.getenv("WHISPER_MODEL", "small"),
+        voice_replies=os.getenv("REPONSE_VOCALE", "1") != "0",
+        tts_voice=os.getenv("VOIX", "fr_FR-siwis-medium"),
         read_only_dirs=[Path(d.strip()).expanduser() for d in os.getenv("READ_ONLY_DIRS", "").split(";") if d.strip()],
     )
     for d in (cfg.projects_dir, cfg.notes_dir, cfg.state_dir):

@@ -54,7 +54,7 @@ L'agent va chercher lui-même les messages de son robot Telegram : pas besoin d'
 3. Dans `.env`, collez-le dans `TELEGRAM_BOT_TOKEN`, puis relancez l'agent.
 4. Écrivez à votre robot : il vous répond avec votre identifiant Telegram. Mettez-le dans `TELEGRAM_ALLOWED`, puis relancez l'agent. Il n'obéit qu'à cet identifiant.
 
-Les vocaux sont transcrits sur le PC (le modèle de transcription se télécharge au premier vocal). Les photos sont rangées dans `NOTES_DIR/medias` et lues par l'agent.
+Les vocaux sont transcrits sur le PC (le modèle de transcription se télécharge au premier vocal). L'agent répond aux vocaux par un vocal, avec une voix de synthèse fabriquée sur le PC (Piper, téléchargée au premier usage) ; `REPONSE_VOCALE=0` pour couper. Les photos sont rangées dans `NOTES_DIR/medias` et lues par l'agent.
 
 ## Utilisation
 

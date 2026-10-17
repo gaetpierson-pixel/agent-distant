@@ -56,6 +56,23 @@ class TelegramBot:
             dest.write_bytes(resp.read())
         return dest
 
+    def send_voice(self, chat_id: int, ogg: Path) -> None:
+        boundary = "agent-distant-voix"
+        body = (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{chat_id}\r\n'
+            f'--{boundary}\r\nContent-Disposition: form-data; name="voice"; filename="reponse.ogg"\r\n'
+            "Content-Type: audio/ogg\r\n\r\n"
+        ).encode() + ogg.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
+        req = urllib.request.Request(
+            API.format(token=self.token, method="sendVoice"),
+            data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            out = json.load(resp)
+        if not out.get("ok"):
+            raise RuntimeError(f"Telegram sendVoice : {out.get('description')}")
+
     def send(self, chat_id: int, text: str) -> None:
         for chunk in split_text(text):
             self._call("sendMessage", {"chat_id": chat_id, "text": chunk})
@@ -120,6 +137,16 @@ async def handle_update(bot, brain: Brain, cfg: Config, update: dict) -> bool:
         log.exception("Échec de la tâche")
         answer = f"Erreur pendant la tâche : {e}"
     bot.send(chat, answer)
+    if cfg.voice_replies and (msg.get("voice") or msg.get("audio")):
+        # Vocal reçu : on répond aussi en vocal (le texte reste, pour les liens et les détails).
+        try:
+            from .speech import synthesize
+
+            ogg = cfg.notes_dir / "medias" / f"{datetime.now():%Y-%m-%d_%H%M%S}_reponse.ogg"
+            await asyncio.to_thread(synthesize, answer, ogg, cfg.tts_voice, cfg.state_dir / "voix")
+            bot.send_voice(chat, ogg)
+        except Exception:  # noqa: BLE001 - le texte est déjà parti, on n'insiste pas
+            log.exception("Échec de la réponse vocale")
     return True
 
 

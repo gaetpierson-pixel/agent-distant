@@ -9,3 +9,4 @@ python-docx
 pypdf
 icalendar
 recurring-ical-events
+piper-tts

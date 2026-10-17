@@ -379,3 +379,32 @@ def test_calendar_reply_mail_is_ignored(tmp_path):
     assert not parse_raw("2", normal.as_bytes())["automatic"]
     normal.replace_header("Subject", "Refusé : Courses")
     assert parse_raw("3", normal.as_bytes())["automatic"]
+
+
+def test_spoken_text_drops_links_and_markup():
+    from agent.speech import spoken_text
+
+    out = spoken_text("**Demain** : [rdv](https://x.y) à 9 h\n- point https://a.b chantier")
+    assert "http" not in out and "*" not in out and "rdv" in out and "chantier" in out
+    assert spoken_text("Phrase. " * 300).endswith("La suite est dans le message écrit.")
+
+
+def test_wav_to_ogg_makes_a_readable_voice_file(tmp_path):
+    import io
+    import wave
+
+    import av
+    import numpy as np
+
+    from agent.speech import wav_to_ogg
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(22050)
+        w.writeframes((np.sin(np.arange(22050) * 0.05) * 3000).astype("int16").tobytes())
+    ogg = wav_to_ogg(buf.getvalue(), tmp_path / "r.ogg")
+    with av.open(str(ogg)) as c:
+        assert c.streams.audio[0].codec_context.name == "opus"
+        assert 0.9 < float(c.duration) / 1_000_000 < 1.2
