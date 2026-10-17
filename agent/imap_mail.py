@@ -24,6 +24,24 @@ def _text_of(msg: email.message.Message) -> str:
     return msg.get_payload(decode=True).decode(msg.get_content_charset() or "utf-8", errors="replace")
 
 
+# Objets des réponses automatiques de Google Agenda, au cas où la partie agenda manquerait.
+AUTO_SUBJECTS = ("accepted:", "declined:", "tentative:", "accepté :", "accepté:", "refusé :", "refusé:",
+                 "provisoire :", "provisoire:", "updated invitation", "invitation mise à jour")
+
+
+def _is_automatic(msg: email.message.Message, subject: str = "") -> bool:
+    """Réponse d'agenda (accepté, refusé…) ou message automatique : ce n'est pas une demande de Gaëtan."""
+    for part in msg.walk():
+        if part.get_content_type() == "text/calendar":
+            method = (part.get_param("method") or "").upper()
+            payload = part.get_payload(decode=True) or b""
+            if method == "REPLY" or b"METHOD:REPLY" in payload.upper():
+                return True
+    if subject.strip().lower().startswith(AUTO_SUBJECTS):
+        return True
+    return msg.get("Auto-Submitted", "no").lower() not in ("", "no")
+
+
 def parse_raw(uid: str, raw: bytes) -> dict:
     msg = email.message_from_bytes(raw)
     subject = str(email.header.make_header(email.header.decode_header(msg.get("Subject", ""))))
@@ -34,6 +52,7 @@ def parse_raw(uid: str, raw: bytes) -> dict:
         "subject": subject,
         "message_id": msg.get("Message-ID", ""),
         "body": strip_quoted(_text_of(msg)),
+        "automatic": _is_automatic(msg, subject),
     }
 
 

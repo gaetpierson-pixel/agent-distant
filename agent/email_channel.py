@@ -21,6 +21,9 @@ async def process_once(gmail, brain: Brain, cfg: Config) -> int:
         if not is_allowed(msg["from"], cfg):
             log.warning("Mail ignoré, expéditeur non autorisé : %s", msg["from"])
             continue
+        if msg.get("automatic"):
+            log.info("Mail automatique ignoré (réponse d'agenda) : %s", msg["subject"])
+            continue
         request = f"Objet : {msg['subject']}\n\n{msg['body']}"
         log.info("Tâche reçue de %s : %s", msg["from"], msg["subject"])
         try:

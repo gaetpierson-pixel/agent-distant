@@ -341,3 +341,41 @@ def test_add_event_sends_calendar_invite():
     ics = part.get_payload(decode=True).replace(b"\r\n ", b"")
     assert b"METHOD:REQUEST" in ics and b"SUMMARY:Dentiste" in ics and b"mailto:gaet@gmail.com" in ics
     assert sent[0]["To"] == "gaet@gmail.com" and "22/10 à 14:00" in sent[0]["Subject"]
+
+
+def test_calendar_reply_mail_is_ignored(tmp_path):
+    from email.message import EmailMessage
+
+    from agent.imap_mail import parse_raw
+
+    m = EmailMessage()
+    m["From"] = "gaet.pierson@gmail.com"
+    m["Subject"] = "Declined: Courses"
+    m.set_content("Gaëtan a refusé")
+    m.add_alternative(b"BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nEND:VCALENDAR\r\n", maintype="text", subtype="calendar", params={"method": "REPLY"})
+    parsed = parse_raw("1", m.as_bytes())
+    assert parsed["automatic"]
+
+    class Box:
+        def __init__(self):
+            self.replied = []
+
+        def unread(self):
+            return [parsed]
+
+        def mark_read(self, i):
+            pass
+
+        def reply(self, msg, body):
+            self.replied.append(body)
+
+    box = Box()
+    assert asyncio.run(process_once(box, _FakeBrain(), _cfg(tmp_path))) == 0 and box.replied == []
+
+    normal = EmailMessage()
+    normal["From"] = "gaet.pierson@gmail.com"
+    normal["Subject"] = "Note"
+    normal.set_content("Rappeler Paul")
+    assert not parse_raw("2", normal.as_bytes())["automatic"]
+    normal.replace_header("Subject", "Refusé : Courses")
+    assert parse_raw("3", normal.as_bytes())["automatic"]
