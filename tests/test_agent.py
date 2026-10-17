@@ -235,3 +235,16 @@ def test_voice_decode_gives_16khz_mono(tmp_path):
             c.mux(p)
     audio = decode(path)
     assert audio.dtype == np.float32 and 15000 < len(audio) < 17500
+
+
+def test_read_only_guard_blocks_writes_only_in_shared_folders(tmp_path):
+    from agent.brain import read_only_guard
+
+    shared = tmp_path / "SharePoint"
+    shared.mkdir()
+    guard = read_only_guard([shared])
+    blocked = asyncio.run(guard({"tool_input": {"file_path": str(shared / "devis.xlsx")}}, "t", None))
+    assert blocked["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert asyncio.run(guard({"tool_input": {"file_path": str(tmp_path / "projets" / "point.md")}}, "t", None)) == {}
+    # Un dossier voisin au nom proche n'est pas concerné.
+    assert asyncio.run(guard({"tool_input": {"file_path": str(tmp_path / "SharePoint2" / "x")}}, "t", None)) == {}
