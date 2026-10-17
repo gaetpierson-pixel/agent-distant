@@ -1,0 +1,103 @@
+"""Canal Telegram : l'agent va chercher lui-même les messages de son robot (pas de webhook, pas de tunnel)."""
+
+import asyncio
+import json
+import logging
+import urllib.parse
+import urllib.request
+
+from .brain import Brain
+from .config import Config
+
+log = logging.getLogger(__name__)
+
+API = "https://api.telegram.org/bot{token}/{method}"
+# Telegram refuse les messages de plus de 4096 caractères : on découpe un peu avant.
+CHUNK = 4000
+
+
+def split_text(text: str, size: int = CHUNK) -> list[str]:
+    chunks = []
+    while len(text) > size:
+        cut = text.rfind("\n", 0, size)
+        if cut <= 0:
+            cut = size
+        chunks.append(text[:cut].rstrip())
+        text = text[cut:].lstrip()
+    if text:
+        chunks.append(text)
+    return chunks or [""]
+
+
+class TelegramBot:
+    def __init__(self, token: str):
+        self.token = token.strip()
+
+    def _call(self, method: str, params: dict, timeout: int = 30) -> dict:
+        data = urllib.parse.urlencode(params).encode()
+        req = urllib.request.Request(API.format(token=self.token, method=method), data=data)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            out = json.load(resp)
+        if not out.get("ok"):
+            raise RuntimeError(f"Telegram {method} : {out.get('description')}")
+        return out["result"]
+
+    def updates(self, offset: int, wait: int = 50) -> list[dict]:
+        # Attente longue : Telegram répond dès qu'un message arrive, ou au bout de `wait` secondes.
+        return self._call("getUpdates", {"offset": offset, "timeout": wait}, timeout=wait + 10)
+
+    def send(self, chat_id: int, text: str) -> None:
+        for chunk in split_text(text):
+            self._call("sendMessage", {"chat_id": chat_id, "text": chunk})
+
+
+class Offset:
+    """Dernier message traité, gardé dans state/ pour ne rien retraiter après un redémarrage."""
+
+    def __init__(self, cfg: Config):
+        self.path = cfg.state_dir / "telegram_offset.txt"
+        self.value = int(self.path.read_text()) if self.path.exists() else 0
+
+    def set(self, value: int) -> None:
+        self.value = value
+        self.path.write_text(str(value))
+
+
+async def handle_update(bot, brain: Brain, cfg: Config, update: dict) -> bool:
+    msg = update.get("message")
+    if not msg:
+        return False
+    user = (msg.get("from") or {}).get("id")
+    chat = msg["chat"]["id"]
+    if user not in cfg.telegram_allowed:
+        # On répond avec l'identifiant : c'est comme ça que Gaëtan trouve le sien au premier essai.
+        log.warning("Telegram ignoré, compte non autorisé : %s", user)
+        bot.send(chat, f"Je ne réponds qu'à mon propriétaire. Votre identifiant Telegram : {user}")
+        return False
+    text = msg.get("text") or msg.get("caption") or ""
+    if not text:
+        bot.send(chat, "Je ne sais pas encore lire les vocaux ni les photos. Envoyez-moi du texte pour l'instant.")
+        return False
+    log.info("Tâche Telegram reçue : %s", text[:80])
+    try:
+        answer = await brain.handle(text, channel="telegram")
+    except Exception as e:  # noqa: BLE001 - on prévient Gaëtan plutôt que de se taire
+        log.exception("Échec de la tâche")
+        answer = f"Erreur pendant la tâche : {e}"
+    bot.send(chat, answer)
+    return True
+
+
+async def run(bot, brain: Brain, cfg: Config) -> None:
+    offset = Offset(cfg)
+    log.info("Canal Telegram démarré.")
+    while True:
+        try:
+            updates = await asyncio.to_thread(bot.updates, offset.value)
+            for update in updates:
+                # Avancé d'abord : un message qui fait planter l'agent n'est pas retraité en boucle.
+                offset.set(update["update_id"] + 1)
+                await handle_update(bot, brain, cfg, update)
+        except Exception:  # noqa: BLE001 - une coupure réseau ne doit pas arrêter l'agent
+            log.exception("Erreur pendant la lecture de Telegram")
+            await asyncio.sleep(10)

@@ -15,7 +15,7 @@ from .config import load_config
 
 
 async def _run_channels(email_task, brain: Brain, cfg) -> None:
-    """Le mail tourne toujours ; WhatsApp s'ajoute si les réglages Twilio sont remplis."""
+    """Le mail tourne toujours ; WhatsApp et Telegram s'ajoutent si leurs réglages sont remplis."""
     tasks = [email_task]
     if os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN"):
         from . import whatsapp_channel
@@ -26,6 +26,11 @@ async def _run_channels(email_task, brain: Brain, cfg) -> None:
             os.getenv("TWILIO_WHATSAPP_NUMBER", "+14155238886"),
         )
         tasks.append(whatsapp_channel.run(wa, brain, cfg))
+    if os.getenv("TELEGRAM_BOT_TOKEN"):
+        from . import telegram_channel
+
+        bot = telegram_channel.TelegramBot(os.environ["TELEGRAM_BOT_TOKEN"])
+        tasks.append(telegram_channel.run(bot, brain, cfg))
     await asyncio.gather(*tasks)
 
 

@@ -26,6 +26,8 @@ class Config:
     # Numéros WhatsApp autorisés (format whatsapp:+33...), et fréquence de lecture de WhatsApp.
     whatsapp_allowed: list[str] = field(default_factory=list)
     whatsapp_poll_seconds: int = 20
+    # Identifiants Telegram (nombres) autorisés à donner des ordres au robot de l'agent.
+    telegram_allowed: list[int] = field(default_factory=list)
     state_dir: Path = ROOT / "state"
 
 
@@ -47,6 +49,7 @@ def load_config() -> Config:
         poll_seconds=int(os.getenv("POLL_SECONDS", "60")),
         whatsapp_allowed=[_wa(n) for n in os.getenv("WHATSAPP_ALLOWED", "").split(",") if n.strip()],
         whatsapp_poll_seconds=int(os.getenv("WHATSAPP_POLL_SECONDS", "20")),
+        telegram_allowed=[int(n) for n in os.getenv("TELEGRAM_ALLOWED", "").split(",") if n.strip()],
     )
     for d in (cfg.projects_dir, cfg.notes_dir, cfg.state_dir):
         d.mkdir(parents=True, exist_ok=True)

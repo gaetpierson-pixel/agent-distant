@@ -205,3 +205,34 @@ def test_split_text_keeps_chunks_under_limit():
 
     parts = split_text("ligne\n" * 600)
     assert len(parts) > 1 and all(len(p) <= 1500 for p in parts)
+
+
+class _FakeBot:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, chat_id, text):
+        self.sent.append((chat_id, text))
+
+
+def _tg(user, text=None, voice=False):
+    msg = {"chat": {"id": user}, "from": {"id": user}}
+    if text:
+        msg["text"] = text
+    if voice:
+        msg["voice"] = {"file_id": "v"}
+    return {"update_id": 1, "message": msg}
+
+
+def test_telegram_answers_owner_and_tells_strangers_their_id(tmp_path):
+    from agent.telegram_channel import handle_update
+
+    cfg = _cfg(tmp_path)
+    cfg.telegram_allowed = [42]
+    bot = _FakeBot()
+    assert asyncio.run(handle_update(bot, _FakeBrain(), cfg, _tg(42, "Note : pain")))
+    assert not asyncio.run(handle_update(bot, _FakeBrain(), cfg, _tg(7, "salut")))
+    assert not asyncio.run(handle_update(bot, _FakeBrain(), cfg, _tg(42, voice=True)))
+    assert bot.sent[0] == (42, "vu : Note : pain")
+    assert "7" in bot.sent[1][1] and bot.sent[1][0] == 7
+    assert "vocaux" in bot.sent[2][1]
