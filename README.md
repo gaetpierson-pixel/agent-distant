@@ -17,20 +17,13 @@ Sécurité :
 ## Installation (une seule fois)
 
 ### 1. Python
-Installez Python 3.11 ou plus récent depuis [python.org](https://www.python.org/downloads/). Sous Windows, cochez « Add Python to PATH ».
+Installez Python 3.11 ou plus récent depuis [python.org](https://www.python.org/downloads/). Pendant l'installation, cochez « Add Python to PATH ».
 
 ### 2. Le code
-Dans un terminal, depuis le dossier du projet :
-
-```
-python -m venv .venv
-.venv\Scripts\activate        (Windows)
-source .venv/bin/activate     (Mac / Linux)
-pip install -r requirements.txt
-```
+Sur la page GitHub du dépôt, cliquez sur **Code**, puis sur **Download ZIP**. Décompressez le fichier dans un dossier, par exemple `Documents\agent-distant`, puis double-cliquez sur **`installer.bat`**.
 
 ### 3. Les réglages
-Copiez `.env.example` en `.env`, puis remplissez-le :
+`installer.bat` a créé un fichier `.env`. Ouvrez-le avec le Bloc-notes et remplissez :
 - la clé API Anthropic ;
 - vos dossiers de projets et de notes ;
 - l'agenda à gérer.
@@ -42,12 +35,19 @@ Copiez `.env.example` en `.env`, puis remplissez-le :
 4. Configurez l'écran de consentement OAuth : type « Externe », puis ajoutez l'adresse de l'agent comme utilisateur test.
 5. Créez un identifiant **OAuth client ID** de type **Desktop app**, téléchargez le fichier JSON et enregistrez-le sous le nom `credentials.json` à la racine du projet.
 6. Depuis **votre** Google Agenda, partagez votre agenda avec l'adresse de l'agent, avec le droit de modifier les événements.
-7. Lancez `python -m agent connecter`. Le navigateur s'ouvre : connectez-vous **avec le compte de l'agent** et acceptez.
+7. Dans l'Explorateur, ouvrez le dossier de l'agent, cliquez dans la barre d'adresse, tapez `cmd` puis Entrée. Dans la fenêtre noire, lancez `.venv\Scripts\python -m agent connecter`. Le navigateur s'ouvre : connectez-vous **avec le compte de l'agent** et acceptez.
 
 ## Utilisation
 
-- Tester le cerveau seul : `python -m agent demander "Quels sont mes rendez-vous demain ?"`
-- Démarrer l'agent : `python -m agent lancer`, puis envoyez un mail depuis votre adresse à celle de l'agent. Il répond dans le même fil.
+- Tester le cerveau seul (dans la même fenêtre `cmd`) : `.venv\Scripts\python -m agent demander "Quels sont mes rendez-vous demain ?"`
+- Démarrer l'agent : double-cliquez sur **`demarrer-agent.bat`**, puis envoyez un mail depuis votre adresse à celle de l'agent. Il répond dans le même fil. Laissez la fenêtre noire ouverte, car la fermer arrête l'agent. Le journal se trouve dans `state\agent.log`.
+
+### Démarrage automatique avec Windows
+1. Clic droit sur `demarrer-agent.bat`, puis **Créer un raccourci**.
+2. Appuyez sur Windows + R, tapez `shell:startup` puis Entrée.
+3. Déplacez le raccourci dans le dossier qui s'ouvre. L'agent démarrera à chaque ouverture de session. Pour arrêter le démarrage automatique, supprimez ce raccourci.
+
+Pour que l'agent reste joignable, le PC ne doit pas se mettre en veille. Réglez la mise en veille sur « Jamais » dans les paramètres d'alimentation de Windows.
 
 Exemples de mails :
 - « Note : rappeler le fournisseur pour le devis inox »
@@ -61,7 +61,6 @@ python -m pytest
 ```
 
 ## Étapes suivantes
-1. Lancement automatique au démarrage du PC.
-2. WhatsApp texte.
-3. WhatsApp vocal et photos de notes manuscrites.
-4. Appel téléphonique.
+1. WhatsApp texte.
+2. WhatsApp vocal et photos de notes manuscrites.
+3. Appel téléphonique.
