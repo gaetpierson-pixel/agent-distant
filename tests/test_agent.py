@@ -294,3 +294,50 @@ def test_lire_document_refuses_files_outside_allowed_folders(tmp_path, monkeypat
     assert "hors des dossiers autorisés" in out["content"][0]["text"]
     out = asyncio.run(handler({"chemin": str(tmp_path / "Alliance" / "absent.docx")}))
     assert "introuvable" in out["content"][0]["text"]
+
+
+ICS = b"""BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:a
+DTSTART;TZID=Europe/Paris:20261019T090000
+DTEND;TZID=Europe/Paris:20261019T100000
+RRULE:FREQ=WEEKLY
+SUMMARY:Point chantier
+LOCATION:Station X
+END:VEVENT
+BEGIN:VEVENT
+UID:b
+DTSTART;VALUE=DATE:20261020
+SUMMARY:Salon
+END:VEVENT
+END:VCALENDAR
+"""
+
+
+def test_ics_lists_recurring_and_all_day_events():
+    from agent.ics_agenda import events_between
+
+    out = events_between(ICS, "2026-10-19T00:00:00", "2026-10-27T00:00:00")
+    assert out.count("Point chantier") == 2 and "(Station X)" in out and "09:00" in out
+    assert "Salon" in out and "(journée)" in out
+    assert events_between(ICS, "2026-10-01T00:00:00", "2026-10-02T00:00:00") == "Aucun événement."
+
+
+def test_add_event_sends_calendar_invite():
+    import email
+
+    from agent.ics_agenda import IcsCalendar
+    from agent.imap_mail import ImapMail
+
+    sent = []
+    mail = ImapMail("agent@gmail.com", "x")
+    mail._send = sent.append
+    out = IcsCalendar("https://x", mail, "gaet@gmail.com").add_event("Dentiste", "2026-10-22T14:00:00", "2026-10-22T15:00:00")
+    assert "Invitation envoyée" in out
+    msg = email.message_from_bytes(sent[0].as_bytes())
+    part = [p for p in msg.walk() if p.get_content_type() == "text/calendar"][0]
+    assert part.get_param("method") == "REQUEST"
+    ics = part.get_payload(decode=True).replace(b"\r\n ", b"")
+    assert b"METHOD:REQUEST" in ics and b"SUMMARY:Dentiste" in ics and b"mailto:gaet@gmail.com" in ics
+    assert sent[0]["To"] == "gaet@gmail.com" and "22/10 à 14:00" in sent[0]["Subject"]

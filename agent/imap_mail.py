@@ -97,6 +97,12 @@ class ImapMail:
     def send(self, to: str, subject: str, body: str) -> None:
         self._send(build_message(self.address, to, subject, body))
 
+    def send_invite(self, to: str, subject: str, body: str, ics: bytes) -> None:
+        m = build_message(self.address, to, subject, body)
+        # Format reconnu par Gmail / Google Agenda : partie text/calendar avec method=REQUEST.
+        m.add_alternative(ics, maintype="text", subtype="calendar", params={"method": "REQUEST"})
+        self._send(m)
+
     def create_draft(self, to: str, subject: str, body: str) -> str:
         m = build_message(self.address, to, subject, body)
         box = self._imap()

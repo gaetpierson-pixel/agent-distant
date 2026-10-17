@@ -7,3 +7,5 @@ faster-whisper
 openpyxl
 python-docx
 pypdf
+icalendar
+recurring-ical-events

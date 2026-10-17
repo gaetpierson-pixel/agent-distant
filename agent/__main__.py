@@ -37,12 +37,17 @@ def main() -> None:
         return
 
     if cmd == "lancer" and os.getenv("GMAIL_APP_PASSWORD"):
-        # Connexion simple à Gmail par mot de passe d'application : pas d'agenda.
+        # Connexion simple à Gmail par mot de passe d'application ; agenda par l'adresse iCal si elle est réglée.
         from . import email_channel
         from .imap_mail import ImapMail
 
         mail = ImapMail(os.environ["GMAIL_ADDRESS"], os.environ["GMAIL_APP_PASSWORD"])
-        brain = Brain(cfg, gmail=mail)
+        calendar = None
+        if os.getenv("CALENDAR_ICS_URL"):
+            from .ics_agenda import IcsCalendar
+
+            calendar = IcsCalendar(os.environ["CALENDAR_ICS_URL"], mail, cfg.calendar_id)
+        brain = Brain(cfg, gmail=mail, calendar=calendar)
         asyncio.run(_run_channels(email_channel.run(mail, brain, cfg), brain, cfg))
         return
 
