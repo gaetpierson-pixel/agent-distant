@@ -1,0 +1,5 @@
+claude-agent-sdk>=0.2.159
+google-api-python-client
+google-auth-oauthlib
+python-dotenv
+pytest

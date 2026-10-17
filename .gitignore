@@ -1,0 +1,7 @@
+.env
+credentials.json
+state/
+notes/
+projets/
+__pycache__/
+.venv/
