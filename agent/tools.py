@@ -4,7 +4,10 @@ from typing import Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
-from .config import Config
+from pathlib import Path
+
+from .config import Config, is_inside
+from .documents import extract
 from .notes import add_note
 
 
@@ -51,7 +54,24 @@ def build_tools(cfg: Config, gmail=None, calendar=None):
             return _text("L'agenda n'est pas connecté.")
         return _text(calendar.add_event(args["titre"], args["debut"], args["fin"], args.get("description", "")))
 
-    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter]
+    @tool(
+        "lire_document",
+        "Lit le texte d'un fichier Excel (.xlsx), Word (.docx) ou PDF. Chemin complet du fichier.",
+        {"chemin": str},
+    )
+    async def lire_document(args):
+        path = Path(args["chemin"]).expanduser()
+        allowed = [cfg.projects_dir, cfg.notes_dir, *cfg.read_only_dirs]
+        if not is_inside(path, allowed):
+            return _text("Ce fichier est hors des dossiers autorisés.")
+        if not path.is_file():
+            return _text("Fichier introuvable.")
+        try:
+            return _text(extract(path))
+        except Exception as e:  # noqa: BLE001 - fichier abîmé, protégé par mot de passe…
+            return _text(f"Impossible de lire ce fichier : {e}")
+
+    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document]
     server = create_sdk_mcp_server(name="perso", tools=tools)
     names = [f"mcp__perso__{t.name}" for t in tools]
     return server, names

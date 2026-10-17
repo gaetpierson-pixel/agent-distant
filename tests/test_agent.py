@@ -248,3 +248,49 @@ def test_read_only_guard_blocks_writes_only_in_shared_folders(tmp_path):
     assert asyncio.run(guard({"tool_input": {"file_path": str(tmp_path / "projets" / "point.md")}}, "t", None)) == {}
     # Un dossier voisin au nom proche n'est pas concerné.
     assert asyncio.run(guard({"tool_input": {"file_path": str(tmp_path / "SharePoint2" / "x")}}, "t", None)) == {}
+
+
+def test_extract_reads_excel_word_and_pdf(tmp_path):
+    from docx import Document
+    from openpyxl import Workbook
+    from pypdf import PdfWriter
+
+    from agent.documents import extract
+
+    wb = Workbook()
+    wb.active.title = "Devis"
+    wb.active.append(["Inox 316L", 12.5])
+    wb.save(tmp_path / "devis.xlsx")
+    assert "Feuille « Devis »" in extract(tmp_path / "devis.xlsx") and "Inox 316L\t12.5" in extract(tmp_path / "devis.xlsx")
+
+    doc = Document()
+    doc.add_paragraph("Compte rendu de chantier")
+    doc.save(tmp_path / "cr.docx")
+    assert "Compte rendu de chantier" in extract(tmp_path / "cr.docx")
+
+    w = PdfWriter()
+    w.add_blank_page(100, 100)
+    with open(tmp_path / "scan.pdf", "wb") as f:
+        w.write(f)
+    assert "pas de texte lisible" in extract(tmp_path / "scan.pdf")
+    assert "non pris en charge" in extract(tmp_path / "vieux.xls")
+
+
+def test_lire_document_refuses_files_outside_allowed_folders(tmp_path, monkeypatch):
+    from agent.tools import build_tools
+
+    cfg = _cfg(tmp_path)
+    cfg.read_only_dirs = [tmp_path / "Alliance"]
+    cfg.read_only_dirs[0].mkdir()
+    (tmp_path / "secret.pdf").write_bytes(b"x")
+    from agent import tools as t
+
+    captured = {}
+    monkeypatch.setattr(t, "create_sdk_mcp_server", lambda name, tools: captured.update({x.name: x for x in tools}))
+    _, names = build_tools(cfg)
+    assert "mcp__perso__lire_document" in names
+    handler = captured["lire_document"].handler
+    out = asyncio.run(handler({"chemin": str(tmp_path / "secret.pdf")}))
+    assert "hors des dossiers autorisés" in out["content"][0]["text"]
+    out = asyncio.run(handler({"chemin": str(tmp_path / "Alliance" / "absent.docx")}))
+    assert "introuvable" in out["content"][0]["text"]

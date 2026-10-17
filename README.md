@@ -6,7 +6,7 @@ Ce qu'il sait faire aujourd'hui :
 - **Notes** : il range vos notes dans un carnet du jour (`NOTES_DIR/2026-10-17.md`).
 - **Agenda** : il consulte votre agenda Google et y ajoute des événements.
 - **Recherches** : il cherche sur le web et cite ses sources.
-- **Projets en cours** : il lit vos dossiers listés dans `READ_ONLY_DIRS` (par exemple le SharePoint synchronisé) sans jamais pouvoir les modifier, et range ce qu'il produit dans son dossier `PROJECTS_DIR`.
+- **Projets en cours** : il lit (y compris Excel, Word et PDF) vos dossiers listés dans `READ_ONLY_DIRS` (par exemple le SharePoint synchronisé) sans jamais pouvoir les modifier, et range ce qu'il produit dans son dossier `PROJECTS_DIR`.
 - **Mails à des tiers** : il prépare des **brouillons** et ne les envoie jamais lui-même.
 
 Sécurité :

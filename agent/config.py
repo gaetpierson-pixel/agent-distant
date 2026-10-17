@@ -32,6 +32,16 @@ class Config:
     state_dir: Path = ROOT / "state"
 
 
+def is_inside(path, folders) -> bool:
+    """Vrai si `path` est dans l'un des dossiers (comparaison insensible à la casse sous Windows)."""
+    target = os.path.normcase(os.path.realpath(path))
+    for folder in folders:
+        root = os.path.normcase(os.path.realpath(folder))
+        if target == root or target.startswith(root.rstrip(os.sep) + os.sep):
+            return True
+    return False
+
+
 def load_config() -> Config:
     load_dotenv(ROOT / ".env")
     senders = [s.strip().lower() for s in os.getenv("ALLOWED_SENDERS", "").split(",") if s.strip()]

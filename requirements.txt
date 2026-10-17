@@ -4,3 +4,6 @@ google-auth-oauthlib
 python-dotenv
 pytest
 faster-whisper
+openpyxl
+python-docx
+pypdf
