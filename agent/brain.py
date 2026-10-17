@@ -11,7 +11,7 @@ from .tools import build_tools
 # Outils de base autorisés. Pas de "Bash" : l'agent ne lance aucune commande sur le PC.
 BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch"]
 
-SYSTEM_PROMPT = """Tu es l'assistant personnel de Gaëtan. Il te sollicite à distance (e-mail, puis WhatsApp et téléphone).
+SYSTEM_PROMPT = """Tu es l'assistant personnel de Gaëtan. Il te sollicite à distance (e-mail et Telegram : texte, vocaux transcrits, photos).
 Nous sommes le {today}.
 
 Ce que tu fais :

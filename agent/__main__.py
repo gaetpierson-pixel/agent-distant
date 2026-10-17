@@ -2,7 +2,7 @@
 
   python -m agent demander "ta demande"   -> teste le cerveau seul, dans le terminal
   python -m agent connecter               -> autorise l'accès au compte Google de l'agent
-  python -m agent lancer                  -> démarre l'agent (mail, et WhatsApp si Twilio est réglé)
+  python -m agent lancer                  -> démarre l'agent (mail, et Telegram si réglé)
 """
 
 import asyncio
@@ -15,17 +15,8 @@ from .config import load_config
 
 
 async def _run_channels(email_task, brain: Brain, cfg) -> None:
-    """Le mail tourne toujours ; WhatsApp et Telegram s'ajoutent si leurs réglages sont remplis."""
+    """Le mail tourne toujours ; Telegram s'ajoute si son jeton est rempli."""
     tasks = [email_task]
-    if os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN"):
-        from . import whatsapp_channel
-
-        wa = whatsapp_channel.TwilioWhatsApp(
-            os.environ["TWILIO_ACCOUNT_SID"],
-            os.environ["TWILIO_AUTH_TOKEN"],
-            os.getenv("TWILIO_WHATSAPP_NUMBER", "+14155238886"),
-        )
-        tasks.append(whatsapp_channel.run(wa, brain, cfg))
     if os.getenv("TELEGRAM_BOT_TOKEN"):
         from . import telegram_channel
 
