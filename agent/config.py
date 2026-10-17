@@ -28,6 +28,8 @@ class Config:
     whatsapp_poll_seconds: int = 20
     # Identifiants Telegram (nombres) autorisés à donner des ordres au robot de l'agent.
     telegram_allowed: list[int] = field(default_factory=list)
+    # Modèle de transcription des vocaux (tiny, base, small, medium) : plus gros = plus juste mais plus lent.
+    whisper_model: str = "small"
     state_dir: Path = ROOT / "state"
 
 
@@ -50,6 +52,7 @@ def load_config() -> Config:
         whatsapp_allowed=[_wa(n) for n in os.getenv("WHATSAPP_ALLOWED", "").split(",") if n.strip()],
         whatsapp_poll_seconds=int(os.getenv("WHATSAPP_POLL_SECONDS", "20")),
         telegram_allowed=[int(n) for n in (os.getenv("TELEGRAM_ALLOWED") or os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")).split(",") if n.strip()],
+        whisper_model=os.getenv("WHISPER_MODEL", "small"),
     )
     for d in (cfg.projects_dir, cfg.notes_dir, cfg.state_dir):
         d.mkdir(parents=True, exist_ok=True)

@@ -5,6 +5,8 @@ import json
 import logging
 import urllib.parse
 import urllib.request
+from datetime import datetime
+from pathlib import Path
 
 from .brain import Brain
 from .config import Config
@@ -12,6 +14,7 @@ from .config import Config
 log = logging.getLogger(__name__)
 
 API = "https://api.telegram.org/bot{token}/{method}"
+FILES = "https://api.telegram.org/file/bot{token}/{path}"
 # Telegram refuse les messages de plus de 4096 caractères : on découpe un peu avant.
 CHUNK = 4000
 
@@ -46,6 +49,13 @@ class TelegramBot:
         # Attente longue : Telegram répond dès qu'un message arrive, ou au bout de `wait` secondes.
         return self._call("getUpdates", {"offset": offset, "timeout": wait}, timeout=wait + 10)
 
+    def download(self, file_id: str, dest: Path) -> Path:
+        info = self._call("getFile", {"file_id": file_id})
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(FILES.format(token=self.token, path=info["file_path"]), timeout=60) as resp:
+            dest.write_bytes(resp.read())
+        return dest
+
     def send(self, chat_id: int, text: str) -> None:
         for chunk in split_text(text):
             self._call("sendMessage", {"chat_id": chat_id, "text": chunk})
@@ -63,6 +73,26 @@ class Offset:
         self.path.write_text(str(value))
 
 
+def to_request(bot, cfg: Config, msg: dict) -> str:
+    """Transforme le message en demande texte : vocal transcrit, photo enregistrée pour que le cerveau la lise."""
+    caption = msg.get("text") or msg.get("caption") or ""
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    media = cfg.notes_dir / "medias"
+    if msg.get("voice") or msg.get("audio"):
+        from .voice import transcribe
+
+        audio = bot.download((msg.get("voice") or msg["audio"])["file_id"], media / f"{stamp}_vocal.ogg")
+        return f"[Message vocal, transcription automatique, à prendre avec prudence]\n{transcribe(audio, cfg.whisper_model)}"
+    if msg.get("photo"):
+        # Telegram donne plusieurs tailles : la dernière est la plus grande.
+        photo = bot.download(msg["photo"][-1]["file_id"], media / f"{stamp}_photo.jpg")
+        return (
+            f"[Photo envoyée par Gaëtan, enregistrée ici : {photo}. Lis-la avec l'outil Read.]\n"
+            + (caption or "Pas de légende. Si c'est une note manuscrite, retranscris-la et enregistre-la avec `noter`.")
+        )
+    return caption
+
+
 async def handle_update(bot, brain: Brain, cfg: Config, update: dict) -> bool:
     msg = update.get("message")
     if not msg:
@@ -74,9 +104,14 @@ async def handle_update(bot, brain: Brain, cfg: Config, update: dict) -> bool:
         log.warning("Telegram ignoré, compte non autorisé : %s", user)
         bot.send(chat, f"Je ne réponds qu'à mon propriétaire. Votre identifiant Telegram : {user}")
         return False
-    text = msg.get("text") or msg.get("caption") or ""
+    try:
+        text = await asyncio.to_thread(to_request, bot, cfg, msg)
+    except Exception as e:  # noqa: BLE001
+        log.exception("Échec de la lecture du vocal ou de la photo")
+        bot.send(chat, f"Je n'ai pas pu lire ce message : {e}")
+        return False
     if not text:
-        bot.send(chat, "Je ne sais pas encore lire les vocaux ni les photos. Envoyez-moi du texte pour l'instant.")
+        bot.send(chat, "Je ne sais lire que le texte, les vocaux et les photos.")
         return False
     log.info("Tâche Telegram reçue : %s", text[:80])
     try:

@@ -211,16 +211,23 @@ class _FakeBot:
     def __init__(self):
         self.sent = []
 
+    def download(self, file_id, dest):
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"img")
+        return dest
+
     def send(self, chat_id, text):
         self.sent.append((chat_id, text))
 
 
-def _tg(user, text=None, voice=False):
+def _tg(user, text=None, photo=False, sticker=False):
     msg = {"chat": {"id": user}, "from": {"id": user}}
     if text:
         msg["text"] = text
-    if voice:
-        msg["voice"] = {"file_id": "v"}
+    if photo:
+        msg["photo"] = [{"file_id": "petite"}, {"file_id": "grande"}]
+    if sticker:
+        msg["sticker"] = {"file_id": "s"}
     return {"update_id": 1, "message": msg}
 
 
@@ -232,7 +239,10 @@ def test_telegram_answers_owner_and_tells_strangers_their_id(tmp_path):
     bot = _FakeBot()
     assert asyncio.run(handle_update(bot, _FakeBrain(), cfg, _tg(42, "Note : pain")))
     assert not asyncio.run(handle_update(bot, _FakeBrain(), cfg, _tg(7, "salut")))
-    assert not asyncio.run(handle_update(bot, _FakeBrain(), cfg, _tg(42, voice=True)))
+    assert not asyncio.run(handle_update(bot, _FakeBrain(), cfg, _tg(42, sticker=True)))
+    assert asyncio.run(handle_update(bot, _FakeBrain(), cfg, _tg(42, photo=True)))
     assert bot.sent[0] == (42, "vu : Note : pain")
     assert "7" in bot.sent[1][1] and bot.sent[1][0] == 7
     assert "vocaux" in bot.sent[2][1]
+    assert "Lis-la avec l'outil Read" in bot.sent[3][1]
+    assert list((cfg.notes_dir / "medias").glob("*_photo.jpg"))
