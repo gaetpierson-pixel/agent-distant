@@ -78,6 +78,10 @@ class TelegramBot:
         self._upload("sendVoice", "voice", chat_id, ogg, "audio/ogg")
 
     def send_file(self, chat_id: int, path: Path) -> None:
+        if path.suffix.lower() in (".png", ".jpg", ".jpeg"):
+            mime = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
+            self._upload("sendPhoto", "photo", chat_id, path, mime)
+            return
         mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         self._upload("sendDocument", "document", chat_id, path, mime)
 

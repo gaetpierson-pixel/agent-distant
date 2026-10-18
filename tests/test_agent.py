@@ -622,3 +622,12 @@ def test_ifc_inventory_and_filter(tmp_path):
     assert "projet « Perrier »" in inventory and "IfcValve : 3" in inventory
     detail = summarize(path, "papillon")
     assert "2 élément(s)" in detail and "DN = 100" in detail and "niveau Chambre de vannes" in detail
+
+
+def test_capture_only_opens_autodesk_links():
+    from agent.capture import allowed_url
+
+    assert allowed_url("https://viewer.autodesk.com/id/abc?sheetId=x")
+    assert not allowed_url("http://viewer.autodesk.com/id/abc")
+    assert not allowed_url("https://viewer.autodesk.com.pirate.fr/id/abc")
+    assert not allowed_url("https://example.com")

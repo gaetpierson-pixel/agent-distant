@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import Config, is_inside
 from .documents import extract
+from .capture import allowed_url, capture
 from .ifc import summarize as ifc_summary
 import shutil
 import time
@@ -199,7 +200,33 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
         except Exception as e:  # noqa: BLE001 - fichier abîmé ou schéma inconnu
             return _text(f"Impossible de lire cette maquette : {e}")
 
-    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude, compte_rendu_visite, lire_maquette_ifc]
+    @tool(
+        "capturer_maquette",
+        "Fait une image de la vue d'une maquette 3D et l'envoie à Gaëtan : lien Autodesk Viewer (https://viewer.autodesk.com/…) "
+        "ou maquette HTML (chemin complet). Regarde ensuite l'image avec Read pour la décrire.",
+        {"type": "object", "properties": {"adresse": {"type": "string"}}, "required": ["adresse"]},
+    )
+    async def capturer_maquette(args):
+        target = args["adresse"].strip()
+        if target.startswith("http"):
+            if not allowed_url(target):
+                return _text("Je n'ouvre que les liens Autodesk Viewer.")
+        else:
+            path = Path(target).expanduser()
+            if path.suffix.lower() not in (".html", ".htm") or not is_inside(path, [cfg.projects_dir, cfg.notes_dir, *cfg.read_only_dirs]):
+                return _text("Je ne capture que les maquettes HTML des dossiers autorisés.")
+            if not path.is_file():
+                return _text("Maquette introuvable.")
+        dest = free_path(cfg.notes_dir / "medias" / f"{time.strftime('%Y-%m-%d_%H%M%S')}_capture.png")
+        try:
+            await capture(target, dest)
+        except Exception as e:  # noqa: BLE001 - navigateur absent, lien expiré, délai dépassé…
+            return _text(f"Capture impossible : {e}")
+        if outbox is not None:
+            outbox.append(dest)
+        return _text(f"Capture enregistrée ici : {dest}. Elle sera envoyée à Gaëtan. Regarde-la avec Read avant de la décrire.")
+
+    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude, compte_rendu_visite, lire_maquette_ifc, capturer_maquette]
     server = create_sdk_mcp_server(name="perso", tools=tools)
     names = [f"mcp__perso__{t.name}" for t in tools]
     return server, names

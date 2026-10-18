@@ -12,3 +12,4 @@ recurring-ical-events
 piper-tts
 pillow
 ifcopenshell
+playwright
