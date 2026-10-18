@@ -29,6 +29,8 @@ class Config:
     read_only_dirs: list[Path] = field(default_factory=list)
     # Modèle de transcription des vocaux (tiny, base, small, medium) : plus gros = plus juste mais plus lent.
     whisper_model: str = "small"
+    # cpu, ou cuda pour transcrire sur la carte graphique NVIDIA (retombe sur le processeur en cas d'échec).
+    whisper_device: str = "cpu"
     # Répondre en vocal aux vocaux (voix de synthèse Piper, fabriquée sur le PC).
     # Déclencheur API d'une routine Claude Code (claude.ai/code/routines) : URL et jeton.
     routine_url: str = ""
@@ -71,6 +73,7 @@ def load_config() -> Config:
         poll_seconds=int(os.getenv("POLL_SECONDS", "60")),
         telegram_allowed=[int(n) for n in (os.getenv("TELEGRAM_ALLOWED") or os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")).split(",") if n.strip()],
         whisper_model=os.getenv("WHISPER_MODEL", "small"),
+        whisper_device=os.getenv("WHISPER_APPAREIL", "cpu").strip().lower(),
         voice_replies=os.getenv("REPONSE_VOCALE", "1") != "0",
         routine_url=os.getenv("ROUTINE_URL", ""),
         routine_token=os.getenv("ROUTINE_TOKEN", ""),

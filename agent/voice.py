@@ -1,5 +1,7 @@
 """Transcription des vocaux, sur le PC (faster-whisper) : rien n'est envoyé à un autre service."""
 
+import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -8,11 +10,33 @@ import numpy as np
 SAMPLE_RATE = 16000
 
 
-@lru_cache(maxsize=1)
-def _model(name: str):
+log = logging.getLogger(__name__)
+
+
+def _cuda_dlls():
+    """Sous Windows, les bibliothèques NVIDIA installées par pip (nvidia-cublas-cu12, nvidia-cudnn-cu12)
+    ne sont pas trouvées toutes seules : on ajoute leurs dossiers à la recherche des DLL."""
+    if os.name != "nt":
+        return
+    import importlib.util
+
+    for pkg in ("nvidia.cublas", "nvidia.cudnn"):
+        spec = importlib.util.find_spec(pkg)
+        for folder in (spec.submodule_search_locations if spec else []):
+            bin_dir = Path(folder) / "bin"
+            if bin_dir.is_dir():
+                os.add_dll_directory(str(bin_dir))
+                os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+
+
+@lru_cache(maxsize=2)
+def _model(name: str, device: str = "cpu"):
     from faster_whisper import WhisperModel
 
     # Le modèle est téléchargé une seule fois au premier vocal, puis gardé sur le PC.
+    if device == "cuda":
+        _cuda_dlls()
+        return WhisperModel(name, device="cuda", compute_type="float16")
     return WhisperModel(name, device="cpu", compute_type="int8")
 
 
@@ -33,8 +57,18 @@ def decode(audio: Path) -> np.ndarray:
     return np.concatenate(chunks).astype(np.float32) / 32768.0
 
 
-def transcribe(audio: Path, model: str = "small", vocabulary: str = "") -> str:
+def _run(audio, model: str, device: str, prompt):
+    segments, _ = _model(model, device).transcribe(audio, language="fr", initial_prompt=prompt)
+    return " ".join(s.text.strip() for s in segments).strip()
+
+
+def transcribe(audio: Path, model: str = "small", vocabulary: str = "", device: str = "cpu") -> str:
     # Les noms propres de Gaëtan (EPUR, CCTI…) guident la transcription : sinon « EPUR » devient « épure » ou « et pure ».
     prompt = f"Vocabulaire : {vocabulary}." if vocabulary else None
-    segments, _ = _model(model).transcribe(decode(audio), language="fr", initial_prompt=prompt)
-    return " ".join(s.text.strip() for s in segments).strip() or "(vocal vide ou inaudible)"
+    samples = decode(audio)
+    if device == "cuda":
+        try:
+            return _run(samples, model, "cuda", prompt) or "(vocal vide ou inaudible)"
+        except Exception as e:  # noqa: BLE001 - pilote ou bibliothèque NVIDIA absente : on retombe sur le processeur
+            log.warning("Carte graphique indisponible pour la transcription (%s) : passage sur le processeur.", e)
+    return _run(samples, model, "cpu", prompt) or "(vocal vide ou inaudible)"

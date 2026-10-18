@@ -840,3 +840,25 @@ def test_context_sheet_is_created_once_and_injected(tmp_path):
     assert "EPUR" in prompt and str(b.context_file) in prompt
     b.context_file.write_text("# Contexte\n- Fournisseur inox : Dupont.\n", encoding="utf-8")
     assert "Dupont" in b._options(None).system_prompt  # relue à chaque demande, jamais écrasée
+
+
+def test_transcription_falls_back_to_cpu_when_gpu_fails(tmp_path, monkeypatch):
+    import numpy as np
+
+    from agent import voice
+
+    class Seg:
+        text = " Bonjour EPUR "
+
+    class Cpu:
+        def transcribe(self, audio, **kw):
+            return [Seg()], None
+
+    def fake_model(name, device="cpu"):
+        if device == "cuda":
+            raise RuntimeError("cudnn introuvable")
+        return Cpu()
+
+    monkeypatch.setattr(voice, "_model", fake_model)
+    monkeypatch.setattr(voice, "decode", lambda p: np.zeros(16000, dtype=np.float32))
+    assert voice.transcribe(tmp_path / "v.ogg", "large-v3-turbo", "EPUR", device="cuda") == "Bonjour EPUR"
