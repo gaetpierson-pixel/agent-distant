@@ -696,7 +696,7 @@ def test_clean_page_removes_late_cookie_banner(tmp_path):
     page = tmp_path / "p.html"
     page.write_text(
         "<html><head><meta charset='utf-8'></head><body><div id='plan'>Coupe D-D</div>"
-        "<div class='docking-panel'><span class='docking-panel-close' onclick='this.parentNode.remove()'>x</span>Vues</div>"
+        "<aside id='left-panel'><div class='c-viewer-panel__close-btn js-left-panel-close' onclick='this.parentNode.remove()'></div>Vues</aside>"
         "<script>setTimeout(()=>{const d=document.createElement('div');d.style.position='fixed';d.style.bottom='0';"
         "d.innerText='We use cookies';document.body.appendChild(d)},100)</script></body></html>",
         encoding="utf-8",

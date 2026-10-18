@@ -20,7 +20,8 @@ CLEAN_PAGE = """() => {
     if ((style.position === 'fixed' || style.position === 'sticky') && /cookie/i.test(el.innerText || '')) el.remove();
   }
   for (const el of document.querySelectorAll('[id*="onetrust" i], [class*="onetrust" i]')) el.remove();
-  for (const btn of document.querySelectorAll('.docking-panel-close')) btn.click();
+  // Croix du panneau « Vues » : .js-left-panel-close sur viewer.autodesk.com, .docking-panel-close ailleurs.
+  for (const btn of document.querySelectorAll('.js-left-panel-close, .docking-panel-close')) btn.click();
 }"""
 
 # Numéros de feuille du type AO-105, PLN-01… : servent à dire à Gaëtan ce qui existe quand la feuille demandée manque.
@@ -102,7 +103,8 @@ async def capture(target: str, dest: Path, wait: int = WAIT_SECONDS, feuille: st
                     await frame.evaluate(CLEAN_PAGE)
                 except Exception:  # noqa: BLE001
                     pass
-            await asyncio.sleep(2)
+            # Le panneau fermé, la visionneuse s'élargit et redessine la feuille.
+            await asyncio.sleep(5)
             await page.screenshot(path=str(dest))
         finally:
             await browser.close()
