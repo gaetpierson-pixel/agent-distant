@@ -490,3 +490,41 @@ def test_compte_rendu_includes_photos_with_captions(tmp_path):
     doc = Document(dest)
     assert len(doc.inline_shapes) == 1
     assert any(p.text == "Photo 1 – Bride DN150" for p in doc.paragraphs)
+
+
+def test_media_since_last_report_are_picked_up(tmp_path):
+    import os
+
+    from agent.compte_rendu import free_path, pending_media
+
+    medias = tmp_path / "medias"
+    medias.mkdir()
+    old = medias / "2026-10-18_090000_000000_photo.jpg"
+    old.write_bytes(b"x")
+    os.utime(old, (100, 100))
+    for name in ("2026-10-18_160000_000000_photo.jpg", "2026-10-18_160100_000000_video.mp4",
+                 "2026-10-18_160200_000000_vocal.ogg", "2026-10-17_160000_000000_photo.jpg"):
+        (medias / name).write_bytes(b"x")
+    photos, videos = pending_media(medias, since=200, day="2026-10-18")
+    assert [p.name for p in photos] == ["2026-10-18_160000_000000_photo.jpg"]
+    assert [v.name for v in videos] == ["2026-10-18_160100_000000_video.mp4"]
+    taken = tmp_path / "CR.docx"
+    taken.write_bytes(b"x")
+    assert free_path(taken).name == "CR_2.docx"
+
+
+def test_photo_sent_as_file_and_video_are_kept(tmp_path):
+    from agent.telegram_channel import KEPT, to_request
+
+    class Bot:
+        def download(self, file_id, dest):
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(b"x")
+            return dest
+
+    cfg = _cfg(tmp_path)
+    as_file = to_request(Bot(), cfg, {"document": {"file_id": "a", "mime_type": "image/jpeg"}})
+    assert "Lis-la avec l'outil Read" in as_file
+    assert to_request(Bot(), cfg, {"video": {"file_id": "b"}}) == KEPT
+    names = sorted(f.name.split("_")[-1] for f in (cfg.notes_dir / "medias").iterdir())
+    assert names == ["photo.jpg", "video.mp4"]

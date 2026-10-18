@@ -14,7 +14,7 @@ def file_name(date: str, affaire: str) -> str:
 
 def build(dest: Path, affaire: str, date: str, lieu: str = "", participants: str = "", objet: str = "",
           constats: list[str] | None = None, actions: list[dict] | None = None, remarques: str = "",
-          photos: list[dict] | None = None) -> Path:
+          photos: list[dict] | None = None, videos: list[str] | None = None) -> Path:
     """photos : [{"chemin": ..., "legende": ...}], placées à la fin, une par ligne, avec leur légende."""
     doc = Document()
     doc.styles["Normal"].font.name = "Calibri"
@@ -57,6 +57,29 @@ def build(dest: Path, affaire: str, date: str, lieu: str = "", participants: str
             caption = doc.add_paragraph(f"Photo {n}" + (f" – {ph['legende']}" if ph.get("legende") else ""))
             caption.runs[0].italic = True
 
+    if videos:
+        doc.add_heading("Vidéos", level=2)
+        doc.add_paragraph("Fichiers rangés à côté de ce compte-rendu :")
+        for v in videos:
+            doc.add_paragraph(v, style="List Bullet")
+
     dest.parent.mkdir(parents=True, exist_ok=True)
     doc.save(dest)
     return dest
+
+
+def pending_media(medias: Path, since: float, day: str) -> tuple[list[Path], list[Path]]:
+    """Photos et vidéos reçues ce jour-là depuis le dernier compte-rendu, dans l'ordre d'arrivée."""
+    if not medias.is_dir():
+        return [], []
+    files = sorted(f for f in medias.iterdir() if f.name.startswith(day) and f.stat().st_mtime > since)
+    return [f for f in files if "_photo." in f.name], [f for f in files if "_video." in f.name]
+
+
+def free_path(path: Path) -> Path:
+    """Jamais d'écrasement : CR.docx, puis CR_2.docx, CR_3.docx…"""
+    n, candidate = 2, path
+    while candidate.exists():
+        candidate = path.with_name(f"{path.stem}_{n}{path.suffix}")
+        n += 1
+    return candidate

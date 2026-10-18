@@ -8,7 +8,10 @@ from pathlib import Path
 
 from .config import Config, is_inside
 from .documents import extract
-from .compte_rendu import build, file_name
+import shutil
+import time
+
+from .compte_rendu import build, file_name, free_path, pending_media
 from .routine import fire
 from .notes import add_note
 
@@ -91,7 +94,8 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
     @tool(
         "compte_rendu_visite",
         "Rédige un compte-rendu de visite en Word à partir de ce que Gaëtan a dicté, et le lui envoie. "
-        "date au format AAAA-MM-JJ. photos : chemins des photos envoyées par Gaëtan, avec une légende tirée de ce qu'il a dit. "
+        "date au format AAAA-MM-JJ. Les photos et vidéos reçues ce jour-là depuis le dernier compte-rendu sont jointes d'office ; "
+        "photos sert seulement à leur donner une légende tirée de ce qu'il a dit. "
         "N'invente rien : un champ non dicté reste vide.",
         {
             "type": "object",
@@ -124,14 +128,25 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
         },
     )
     async def compte_rendu_visite(args):
-        dest = cfg.projects_dir / "comptes-rendus" / file_name(args["date"], args["affaire"])
-        photos = args.get("photos") or []
         allowed = [cfg.projects_dir, cfg.notes_dir, *cfg.read_only_dirs]
-        for ph in photos:
+        captions = {}
+        for ph in args.get("photos") or []:
             path = Path(ph["chemin"]).expanduser()
             if not is_inside(path, allowed) or not path.is_file():
                 return _text(f"Photo introuvable ou hors des dossiers autorisés : {path}")
+            captions[path.resolve()] = ph.get("legende", "")
+        last = cfg.state_dir / "dernier_cr.txt"
+        since = float(last.read_text()) if last.exists() else 0.0
+        new_photos, videos = pending_media(cfg.notes_dir / "medias", since, args["date"])
+        # Photos citées par le modèle d'abord (dans son ordre), puis celles du jour qu'il n'a pas citées.
+        ordered = list(captions) + [p.resolve() for p in new_photos if p.resolve() not in captions]
+        photos = [{"chemin": p, "legende": captions.get(p, "")} for p in ordered]
+
+        dest = free_path(cfg.projects_dir / "comptes-rendus" / file_name(args["date"], args["affaire"]))
         try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            for v in videos:
+                shutil.copy2(v, free_path(dest.parent / v.name))
             build(
                 dest,
                 affaire=args["affaire"],
@@ -143,12 +158,17 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
                 actions=args.get("actions") or [],
                 remarques=args.get("remarques", ""),
                 photos=photos,
+                videos=[v.name for v in videos],
             )
         except Exception as e:  # noqa: BLE001
             return _text(f"Compte-rendu non créé : {e}")
+        last.write_text(str(time.time()))
         if outbox is not None:
             outbox.append(dest)
-        return _text(f"Compte-rendu enregistré ici : {dest}. Il sera envoyé à Gaëtan avec ta réponse.")
+        return _text(
+            f"Compte-rendu enregistré ici : {dest} ({len(photos)} photo(s), {len(videos)} vidéo(s)). "
+            "Il sera envoyé à Gaëtan avec ta réponse."
+        )
 
     tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude, compte_rendu_visite]
     server = create_sdk_mcp_server(name="perso", tools=tools)

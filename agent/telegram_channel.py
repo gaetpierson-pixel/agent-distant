@@ -97,22 +97,49 @@ class Offset:
         self.path.write_text(str(value))
 
 
+# Vidéo envoyée sans texte : gardée pour le prochain compte-rendu, sans déranger le cerveau.
+KEPT = "[média gardé]"
+
+
+def _image_or_video(msg: dict) -> tuple[str, str, str] | None:
+    """(file_id, type, extension) d'une photo ou d'une vidéo, qu'elle arrive en photo, en vidéo ou en fichier."""
+    if msg.get("photo"):
+        # Telegram donne plusieurs tailles : la dernière est la plus grande.
+        return msg["photo"][-1]["file_id"], "photo", "jpg"
+    for key in ("video", "video_note"):
+        if msg.get(key):
+            return msg[key]["file_id"], "video", "mp4"
+    doc = msg.get("document") or {}
+    mime = doc.get("mime_type", "")
+    if mime.startswith("image/"):
+        return doc["file_id"], "photo", "png" if mime == "image/png" else "jpg"
+    if mime.startswith("video/"):
+        return doc["file_id"], "video", Path(doc.get("file_name", "v.mp4")).suffix.lstrip(".") or "mp4"
+    return None
+
+
 def to_request(bot, cfg: Config, msg: dict) -> str:
-    """Transforme le message en demande texte : vocal transcrit, photo enregistrée pour que le cerveau la lise."""
+    """Transforme le message en demande texte : vocal transcrit, photo ou vidéo enregistrée sur le PC."""
     caption = msg.get("text") or msg.get("caption") or ""
-    stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S_%f")
     media = cfg.notes_dir / "medias"
     if msg.get("voice") or msg.get("audio"):
         from .voice import transcribe
 
         audio = bot.download((msg.get("voice") or msg["audio"])["file_id"], media / f"{stamp}_vocal.ogg")
         return f"[Message vocal, transcription automatique, à prendre avec prudence]\n{transcribe(audio, cfg.whisper_model)}"
-    if msg.get("photo"):
-        # Telegram donne plusieurs tailles : la dernière est la plus grande.
-        photo = bot.download(msg["photo"][-1]["file_id"], media / f"{stamp}_photo.jpg")
-        return (
-            f"[Photo envoyée par Gaëtan, enregistrée ici : {photo}. Lis-la avec l'outil Read.]\n"
-            + (caption or "Pas de légende. Si c'est une note manuscrite, retranscris-la et enregistre-la avec `noter`.")
+    found = _image_or_video(msg)
+    if found:
+        file_id, kind, ext = found
+        path = bot.download(file_id, media / f"{stamp}_{kind}.{ext}")
+        if kind == "video":
+            if not caption:
+                return KEPT
+            return f"[Vidéo envoyée par Gaëtan, enregistrée ici : {path}. Tu ne peux pas la regarder.]\n{caption}"
+        return f"[Photo envoyée par Gaëtan, enregistrée ici : {path}. Lis-la avec l'outil Read.]\n" + (
+            caption
+            or "Pas de légende. Si c'est une note manuscrite, retranscris-la et enregistre-la avec `noter`. "
+            "Sinon, réponds juste en une ligne que la photo est gardée pour le prochain compte-rendu."
         )
     return caption
 
@@ -135,8 +162,11 @@ async def handle_update(bot, brain: Brain, cfg: Config, update: dict) -> bool:
         bot.send(chat, f"Je n'ai pas pu lire ce message : {e}")
         return False
     if not text:
-        bot.send(chat, "Je ne sais lire que le texte, les vocaux et les photos.")
+        bot.send(chat, "Je ne sais lire que le texte, les vocaux, les photos et les vidéos.")
         return False
+    if text == KEPT:
+        bot.send(chat, "Reçu, je le garde pour le prochain compte-rendu. Ajoute un texte si tu veux autre chose.")
+        return True
     log.info("Tâche Telegram reçue : %s", text[:80])
     try:
         answer = await brain.handle(text, channel="telegram")
