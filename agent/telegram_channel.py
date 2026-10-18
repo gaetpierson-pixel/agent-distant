@@ -152,7 +152,8 @@ def to_request(bot, cfg: Config, msg: dict) -> str:
         return _video_request(path, cfg, caption)
     if kind == "fichier":
         return (
-            f"[Fichier envoyé par Gaëtan, enregistré ici : {path}. Lis-le avec `lire_document` (Excel, Word, PDF) ou Read.]\n"
+            f"[Fichier envoyé par Gaëtan, enregistré ici : {path}. Lis-le avec `lire_document` (Excel, Word, PDF), "
+            f"`lire_maquette_ifc` (.ifc) ou Read.]\n"
             + (caption or "Pas de message : résume-le en quelques lignes.")
         )
     return f"[Photo envoyée par Gaëtan, enregistrée ici : {path}. Lis-la avec l'outil Read.]\n" + (

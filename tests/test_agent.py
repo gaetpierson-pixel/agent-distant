@@ -594,3 +594,31 @@ def test_session_restarts_after_update_or_on_request(tmp_path, monkeypatch):
     assert seen["resume"] is None  # code mis à jour : pas de reprise
     assert "neuve" in asyncio.run(b.handle("Nouvelle conversation", channel="telegram"))
     assert "telegram" not in json.loads(b.sessions_file.read_text())
+
+
+def test_ifc_inventory_and_filter(tmp_path):
+    import pytest
+
+    pytest.importorskip("ifcopenshell")
+    import ifcopenshell.api
+
+    from agent.ifc import summarize
+
+    f = ifcopenshell.api.run("project.create_file")
+    proj = ifcopenshell.api.run("root.create_entity", f, ifc_class="IfcProject", name="Perrier")
+    site = ifcopenshell.api.run("root.create_entity", f, ifc_class="IfcSite", name="Site")
+    storey = ifcopenshell.api.run("root.create_entity", f, ifc_class="IfcBuildingStorey", name="Chambre de vannes")
+    ifcopenshell.api.run("aggregate.assign_object", f, products=[site], relating_object=proj)
+    ifcopenshell.api.run("aggregate.assign_object", f, products=[storey], relating_object=site)
+    for name in ("Vanne papillon DN150", "Vanne papillon DN100", "Clapet DN150"):
+        valve = ifcopenshell.api.run("root.create_entity", f, ifc_class="IfcValve", name=name)
+        ifcopenshell.api.run("spatial.assign_container", f, products=[valve], relating_structure=storey)
+        pset = ifcopenshell.api.run("pset.add_pset", f, product=valve, name="Pset_Epur")
+        ifcopenshell.api.run("pset.edit_pset", f, pset=pset, properties={"DN": int(name[-3:]), "Materiau": "Inox 316L"})
+    path = tmp_path / "perrier.ifc"
+    f.write(str(path))
+
+    inventory = summarize(path)
+    assert "projet « Perrier »" in inventory and "IfcValve : 3" in inventory
+    detail = summarize(path, "papillon")
+    assert "2 élément(s)" in detail and "DN = 100" in detail and "niveau Chambre de vannes" in detail

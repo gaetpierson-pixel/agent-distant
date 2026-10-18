@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import Config, is_inside
 from .documents import extract
+from .ifc import summarize as ifc_summary
 import shutil
 import time
 
@@ -181,7 +182,24 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
             "Il sera envoyé à Gaëtan avec ta réponse : dis-lui où il est rangé, et si un dossier de chantier a été créé."
         )
 
-    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude, compte_rendu_visite]
+    @tool(
+        "lire_maquette_ifc",
+        "Lit une maquette IFC (chemin complet). Sans filtre : inventaire par type. Avec filtre (type IFC comme IfcValve, "
+        "ou mot du nom comme « papillon ») : liste des éléments avec leurs propriétés (DN, matériau…).",
+        {"type": "object", "properties": {"chemin": {"type": "string"}, "filtre": {"type": "string"}}, "required": ["chemin"]},
+    )
+    async def lire_maquette_ifc(args):
+        path = Path(args["chemin"]).expanduser()
+        if not is_inside(path, [cfg.projects_dir, cfg.notes_dir, *cfg.read_only_dirs]):
+            return _text("Cette maquette est hors des dossiers autorisés.")
+        if not path.is_file():
+            return _text("Maquette introuvable.")
+        try:
+            return _text(ifc_summary(path, args.get("filtre", "")))
+        except Exception as e:  # noqa: BLE001 - fichier abîmé ou schéma inconnu
+            return _text(f"Impossible de lire cette maquette : {e}")
+
+    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude, compte_rendu_visite, lire_maquette_ifc]
     server = create_sdk_mcp_server(name="perso", tools=tools)
     names = [f"mcp__perso__{t.name}" for t in tools]
     return server, names
