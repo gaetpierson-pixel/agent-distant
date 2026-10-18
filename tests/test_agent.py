@@ -829,3 +829,14 @@ def test_gmail_perso_search_is_read_only(tmp_path):
     assert ("SEARCH", "X-GM-RAW", '"perrier delais newer_than:90d"') in calls
     text = g.read("7", tmp_path / "pj")
     assert "fin novembre" in text and (tmp_path / "pj" / "planning.pdf").exists()
+
+
+def test_context_sheet_is_created_once_and_injected(tmp_path):
+    from agent.brain import Brain
+
+    cfg = _cfg(tmp_path)
+    b = Brain(cfg)
+    prompt = b._options(None).system_prompt
+    assert "EPUR" in prompt and str(b.context_file) in prompt
+    b.context_file.write_text("# Contexte\n- Fournisseur inox : Dupont.\n", encoding="utf-8")
+    assert "Dupont" in b._options(None).system_prompt  # relue à chaque demande, jamais écrasée

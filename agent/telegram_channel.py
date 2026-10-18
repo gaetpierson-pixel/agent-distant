@@ -131,7 +131,7 @@ def _video_request(path: Path, cfg: Config, caption: str) -> str:
     if has_audio(path):
         from .voice import transcribe
 
-        lines.append(f"Son de la vidéo, transcription automatique : {transcribe(path, cfg.whisper_model)}")
+        lines.append(f"Son de la vidéo, transcription automatique : {transcribe(path, cfg.whisper_model, cfg.vocabulary)}")
     lines.append("]")
     lines.append(caption or "Pas de légende : décris en deux lignes ce que montre la vidéo ; elle est gardée pour le prochain compte-rendu.")
     return "\n".join(lines)
@@ -146,7 +146,7 @@ def to_request(bot, cfg: Config, msg: dict) -> str:
         from .voice import transcribe
 
         audio = bot.download((msg.get("voice") or msg["audio"])["file_id"], media / f"{stamp}_vocal.ogg")
-        return f"[Message vocal, transcription automatique, à prendre avec prudence]\n{transcribe(audio, cfg.whisper_model)}"
+        return f"[Message vocal, transcription automatique, à prendre avec prudence]\n{transcribe(audio, cfg.whisper_model, cfg.vocabulary)}"
     found = _media(msg)
     if not found:
         return caption

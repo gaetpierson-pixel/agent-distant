@@ -33,6 +33,8 @@ def decode(audio: Path) -> np.ndarray:
     return np.concatenate(chunks).astype(np.float32) / 32768.0
 
 
-def transcribe(audio: Path, model: str = "small") -> str:
-    segments, _ = _model(model).transcribe(decode(audio), language="fr")
+def transcribe(audio: Path, model: str = "small", vocabulary: str = "") -> str:
+    # Les noms propres de Gaëtan (EPUR, CCTI…) guident la transcription : sinon « EPUR » devient « épure » ou « et pure ».
+    prompt = f"Vocabulaire : {vocabulary}." if vocabulary else None
+    segments, _ = _model(model).transcribe(decode(audio), language="fr", initial_prompt=prompt)
     return " ".join(s.text.strip() for s in segments).strip() or "(vocal vide ou inaudible)"
