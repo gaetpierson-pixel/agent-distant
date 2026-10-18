@@ -756,26 +756,37 @@ class _Mail:
 
 
 def test_outlook_search_and_read_are_read_only(tmp_path):
-    from agent.outlook import read, search
+    import pytest
+
+    from agent.outlook import NotAllowed, read, search
 
     perrier = _Mail("Perrier délais", "Le client décale la pose à fin novembre.", "Marc", "2026-10-10T09:00", [_Att()])
     other = _Mail("Béziers", "Rien à voir", "Paul", "2026-10-11T09:00")
     trash = _Mail("Perrier ancien", "délais", "Marc", "2026-10-12T09:00")
+    julie_mail = _Mail("Perrier perso", "délais", "Marc", "2026-10-13T09:00")
     inbox = _Folder("Boîte de réception", [perrier, other], [_Folder("Chantiers", [])])
-    store = _Folder("gaetan@alliance.fr", [], [inbox, _Folder("Éléments supprimés", [trash])])
+    store = _Folder("gaetan@ccti.fr", [], [inbox, _Folder("Éléments supprimés", [trash])])
+    julie = _Folder("julie@outlook.fr", [], [_Folder("Boîte de réception", [julie_mail])])
+    perrier.Parent, julie_mail.Parent = store, julie
+    mine = ("Gaetan@CCTI.fr",)
 
     class NS:
-        Folders = [store]
+        Folders = [store, julie]
 
         def GetItemFromID(self, entry_id):
-            return {"Perrier délais": perrier}[entry_id]
+            return {"Perrier délais": perrier, "Perrier perso": julie_mail}[entry_id]
 
-    out = search("perrier delais", ns=NS())
+    out = search("perrier delais", accounts=mine, ns=NS())
     assert "1 mail(s)" in out and "Marc <marc@epur.fr>" in out and "1 pièce(s) jointe(s)" in out
     assert "ancien" not in out  # corbeille ignorée
-    assert "Aucun mail" in search("perrier", sender="Paul", ns=NS())
-    text = read("Perrier délais", tmp_path / "pj", ns=NS())
+    assert "perso" not in out  # boîte de Julie jamais parcourue
+    assert "Aucun mail" in search("perrier", sender="Paul", accounts=mine, ns=NS())
+    text = read("Perrier délais", tmp_path / "pj", accounts=mine, ns=NS())
     assert "fin novembre" in text and (tmp_path / "pj" / "2026-10-10_devis vannes.pdf").exists()
+    with pytest.raises(NotAllowed):
+        read("Perrier perso", tmp_path / "pj", accounts=mine, ns=NS())
+    with pytest.raises(NotAllowed):  # liste vide : fermé par défaut
+        search("perrier", ns=NS())
 
 
 def test_gmail_perso_search_is_read_only(tmp_path):

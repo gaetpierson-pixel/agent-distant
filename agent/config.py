@@ -41,6 +41,8 @@ class Config:
     # Gmail perso de Gaëtan, en lecture seule (mot de passe d'application). Vide : pas de recherche dans ce Gmail.
     gmail_perso: str = ""
     gmail_perso_password: str = ""
+    # Adresses des boîtes Outlook du PC que l'agent peut lire (le PC est partagé). Vide : aucune recherche Outlook.
+    outlook_accounts: tuple[str, ...] = ()
     state_dir: Path = ROOT / "state"
 
 
@@ -76,6 +78,7 @@ def load_config() -> Config:
         cr_subfolder=os.getenv("CR_SOUS_DOSSIER", "00 - ETUDE"),
         gmail_perso=os.getenv("GMAIL_PERSO_ADRESSE", ""),
         gmail_perso_password=os.getenv("GMAIL_PERSO_MOT_DE_PASSE", ""),
+        outlook_accounts=tuple(a.strip() for a in os.getenv("OUTLOOK_COMPTES", "").split(",") if a.strip()),
     )
     for d in (cfg.projects_dir, cfg.notes_dir, cfg.state_dir):
         d.mkdir(parents=True, exist_ok=True)

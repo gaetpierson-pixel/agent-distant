@@ -275,13 +275,15 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
         },
     )
     async def chercher_mails(args):
-        from .outlook import search
+        from .outlook import NotAllowed, search
 
         words, sender, days, box = args["mots"], args.get("expediteur", ""), args.get("jours", 180), args.get("boite", "")
         parts = []
         if box in ("", "pro"):
             try:
-                parts.append("Boîte pro (Outlook) :\n" + await asyncio.to_thread(search, words, sender, days))
+                parts.append("Boîte pro (Outlook) :\n" + await asyncio.to_thread(search, words, sender, days, cfg.outlook_accounts))
+            except NotAllowed as e:
+                parts.append(f"Boîte pro : recherche refusée ({e}).")
             except Exception as e:  # noqa: BLE001 - Outlook fermé, pas sous Windows…
                 parts.append(f"Boîte pro : recherche impossible ({e}). Outlook doit être ouvert sur le PC.")
         if box in ("", "perso"):
@@ -310,7 +312,7 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
                 if gmail is None:
                     return _text("Gmail perso : pas encore branché.")
                 return _text(await asyncio.to_thread(gmail.read, args["id"][len("gmail:"):], folder))
-            return _text(await asyncio.to_thread(read, args["id"], folder))
+            return _text(await asyncio.to_thread(read, args["id"], folder, cfg.outlook_accounts))
         except Exception as e:  # noqa: BLE001
             return _text(f"Lecture impossible : {e}")
 

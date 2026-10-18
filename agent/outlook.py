@@ -1,4 +1,4 @@
-"""Recherche en LECTURE SEULE dans l'Outlook du PC (boîte pro de Gaëtan), par l'interface COM de Windows.
+"""Recherche en LECTURE SEULE dans l'Outlook du PC (seulement la boîte pro de Gaëtan, listée dans OUTLOOK_COMPTES), par l'interface COM de Windows.
 Aucune méthode d'envoi, de déplacement, de suppression ni de marquage n'est appelée ici."""
 
 import re
@@ -40,14 +40,40 @@ def _sender(item) -> str:
     return f"{name} <{address}>" if address and "@" in address else name
 
 
-def search(words: str, sender: str = "", days: int = 180, ns=None) -> str:
-    """Mails des `days` derniers jours dont l'objet, le texte ou l'expéditeur contient tous les mots (sans accents ni casse)."""
+class NotAllowed(Exception):
+    pass
+
+
+def _store_names(ns, accounts) -> set[str]:
+    """Noms des boîtes autorisées : celles dont le nom ou l'adresse du compte figure dans `accounts`.
+    Le PC est partagé : toute autre boîte présente dans Outlook (celle de Julie…) est exclue."""
+    wanted = {_plain(a).strip() for a in accounts if a.strip()}
+    if not wanted:
+        raise NotAllowed("aucune boîte autorisée (OUTLOOK_COMPTES vide dans le .env)")
+    names = set(wanted)
+    for acc in getattr(ns, "Accounts", None) or []:
+        if _plain(getattr(acc, "SmtpAddress", "")) in wanted:
+            names.add(_plain(acc.DeliveryStore.DisplayName))
+    return names
+
+
+def _store_of(folder) -> str:
+    store = getattr(folder, "Store", None)
+    return _plain(store.DisplayName if store is not None else folder.Name)
+
+
+def search(words: str, sender: str = "", days: int = 180, accounts=(), ns=None) -> str:
+    """Mails des `days` derniers jours dont l'objet, le texte ou l'expéditeur contient tous les mots (sans accents ni casse).
+    Seules les boîtes de `accounts` sont parcourues."""
     ns = ns or _namespace()
+    allowed = _store_names(ns, accounts)
     wanted = _plain(words).split()
     who = _plain(sender)
     since = (datetime.now() - timedelta(days=days)).strftime("%d/%m/%Y %H:%M")
     found = []
     for store_root in ns.Folders:
+        if _store_of(store_root) not in allowed and _plain(store_root.Name) not in allowed:
+            continue
         for folder in _folders(store_root):
             try:
                 items = folder.Items.Restrict(f"[ReceivedTime] >= '{since}'")
@@ -72,10 +98,14 @@ def search(words: str, sender: str = "", days: int = 180, ns=None) -> str:
     return "\n".join(lines)
 
 
-def read(entry_id: str, attachments_dir: Path, ns=None) -> str:
-    """Texte d'un mail trouvé par `search`. Les pièces jointes sont copiées dans attachments_dir pour être lues ensuite."""
+def read(entry_id: str, attachments_dir: Path, accounts=(), ns=None) -> str:
+    """Texte d'un mail trouvé par `search`. Les pièces jointes sont copiées dans attachments_dir pour être lues ensuite.
+    Refuse un mail rangé dans une boîte non autorisée."""
     ns = ns or _namespace()
+    allowed = _store_names(ns, accounts)
     item = ns.GetItemFromID(entry_id)
+    if _store_of(item.Parent) not in allowed:
+        raise NotAllowed("ce mail est dans une boîte qui n'est pas celle de Gaëtan")
     lines = [
         f"Date : {item.ReceivedTime:%d/%m/%Y %H:%M}",
         f"De : {_sender(item)}",
