@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import Config, is_inside
 from .documents import extract
+from .compte_rendu import build, file_name
 from .routine import fire
 from .notes import add_note
 
@@ -16,8 +17,9 @@ def _text(s: str) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": s}]}
 
 
-def build_tools(cfg: Config, gmail=None, calendar=None):
-    """Construit le serveur d'outils. gmail/calendar peuvent être absents (tests, mode local)."""
+def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = None):
+    """Construit le serveur d'outils. gmail/calendar peuvent être absents (tests, mode local).
+    `outbox` reçoit les fichiers produits (comptes-rendus Word) que le canal renvoie à Gaëtan."""
 
     @tool("noter", "Enregistre une note de Gaëtan dans son carnet du jour.", {"texte": str, "source": str})
     async def noter(args):
@@ -86,7 +88,53 @@ def build_tools(cfg: Config, gmail=None, calendar=None):
         except Exception as e:  # noqa: BLE001 - réseau, jeton refusé, limite horaire…
             return _text(f"Échec du lancement : {e}")
 
-    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude]
+    @tool(
+        "compte_rendu_visite",
+        "Rédige un compte-rendu de visite en Word à partir de ce que Gaëtan a dicté, et le lui envoie. "
+        "date au format AAAA-MM-JJ. N'invente rien : un champ non dicté reste vide.",
+        {
+            "type": "object",
+            "properties": {
+                "affaire": {"type": "string"},
+                "date": {"type": "string"},
+                "lieu": {"type": "string"},
+                "participants": {"type": "string"},
+                "objet": {"type": "string"},
+                "constats": {"type": "array", "items": {"type": "string"}},
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"action": {"type": "string"}, "qui": {"type": "string"}, "echeance": {"type": "string"}},
+                        "required": ["action"],
+                    },
+                },
+                "remarques": {"type": "string"},
+            },
+            "required": ["affaire", "date"],
+        },
+    )
+    async def compte_rendu_visite(args):
+        dest = cfg.projects_dir / "comptes-rendus" / file_name(args["date"], args["affaire"])
+        try:
+            build(
+                dest,
+                affaire=args["affaire"],
+                date=args["date"],
+                lieu=args.get("lieu", ""),
+                participants=args.get("participants", ""),
+                objet=args.get("objet", ""),
+                constats=args.get("constats") or [],
+                actions=args.get("actions") or [],
+                remarques=args.get("remarques", ""),
+            )
+        except Exception as e:  # noqa: BLE001
+            return _text(f"Compte-rendu non créé : {e}")
+        if outbox is not None:
+            outbox.append(dest)
+        return _text(f"Compte-rendu enregistré ici : {dest}. Il sera envoyé à Gaëtan avec ta réponse.")
+
+    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude, compte_rendu_visite]
     server = create_sdk_mcp_server(name="perso", tools=tools)
     names = [f"mcp__perso__{t.name}" for t in tools]
     return server, names

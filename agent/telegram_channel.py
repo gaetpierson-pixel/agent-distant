@@ -56,22 +56,29 @@ class TelegramBot:
             dest.write_bytes(resp.read())
         return dest
 
-    def send_voice(self, chat_id: int, ogg: Path) -> None:
-        boundary = "agent-distant-voix"
+    def _upload(self, method: str, field: str, chat_id: int, path: Path, mime: str) -> None:
+        boundary = "agent-distant-fichier"
         body = (
             f'--{boundary}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n{chat_id}\r\n'
-            f'--{boundary}\r\nContent-Disposition: form-data; name="voice"; filename="reponse.ogg"\r\n'
-            "Content-Type: audio/ogg\r\n\r\n"
-        ).encode() + ogg.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
+            f'--{boundary}\r\nContent-Disposition: form-data; name="{field}"; filename="{path.name}"\r\n'
+            f"Content-Type: {mime}\r\n\r\n"
+        ).encode() + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
         req = urllib.request.Request(
-            API.format(token=self.token, method="sendVoice"),
+            API.format(token=self.token, method=method),
             data=body,
             headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
         )
         with urllib.request.urlopen(req, timeout=60) as resp:
             out = json.load(resp)
         if not out.get("ok"):
-            raise RuntimeError(f"Telegram sendVoice : {out.get('description')}")
+            raise RuntimeError(f"Telegram {method} : {out.get('description')}")
+
+    def send_voice(self, chat_id: int, ogg: Path) -> None:
+        self._upload("sendVoice", "voice", chat_id, ogg, "audio/ogg")
+
+    def send_file(self, chat_id: int, path: Path) -> None:
+        mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        self._upload("sendDocument", "document", chat_id, path, mime)
 
     def send(self, chat_id: int, text: str) -> None:
         for chunk in split_text(text):
@@ -137,6 +144,12 @@ async def handle_update(bot, brain: Brain, cfg: Config, update: dict) -> bool:
         log.exception("Échec de la tâche")
         answer = f"Erreur pendant la tâche : {e}"
     bot.send(chat, answer)
+    for produced in list(getattr(brain, "outbox", [])):
+        try:
+            bot.send_file(chat, produced)
+        except Exception:  # noqa: BLE001
+            log.exception("Échec de l'envoi du fichier")
+            bot.send(chat, f"Le fichier est sur le PC, mais je n'ai pas pu l'envoyer : {produced}")
     if cfg.voice_replies and (msg.get("voice") or msg.get("audio")):
         # Vocal reçu : on répond aussi en vocal (le texte reste, pour les liens et les détails).
         try:

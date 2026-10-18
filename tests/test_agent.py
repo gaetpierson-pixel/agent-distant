@@ -445,7 +445,32 @@ def test_task_request_fires_routine_without_the_model(tmp_path, monkeypatch):
     monkeypatch.setattr(brain_mod, "fire", fake_fire)
     b = brain_mod.Brain.__new__(brain_mod.Brain)
     b.cfg = cfg
+    b.outbox = []
     text = "[Message vocal, transcription automatique]\nLance une tâche Claude : fais un point sur l'IA."
     answer = asyncio.run(b.handle(text, channel="telegram"))
     assert sent["text"] == "fais un point sur l'IA."
     assert "https://claude.ai/code/session_1" in answer
+
+
+
+def test_compte_rendu_word_keeps_only_what_was_dictated(tmp_path):
+    from docx import Document
+
+    from agent.compte_rendu import build, file_name
+
+    dest = tmp_path / file_name("2026-10-18", "PR Guebwiller / chambre")
+    build(dest, "PR Guebwiller", "2026-10-18", lieu="Guebwiller",
+          constats=["Fuite sur la bride DN150"], actions=[{"action": "Changer le joint"}])
+    doc = Document(dest)
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert dest.name == "CR_2026-10-18_PR-Guebwiller-chambre.docx"
+    assert "Fuite sur la bride DN150" in text
+    actions = doc.tables[1]
+    assert [c.text for c in actions.rows[1].cells] == ["Changer le joint", "", ""]
+    # Pas de participants dictés : pas de ligne Participants.
+    assert all(r.cells[0].text != "Participants" for r in doc.tables[0].rows)
+
+
+def test_compte_rendu_tool_is_exposed(tmp_path):
+    _, names = build_tools(_cfg(tmp_path), outbox=[])
+    assert "mcp__perso__compte_rendu_visite" in names
