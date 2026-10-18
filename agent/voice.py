@@ -14,19 +14,17 @@ log = logging.getLogger(__name__)
 
 
 def _cuda_dlls():
-    """Sous Windows, les bibliothèques NVIDIA installées par pip (nvidia-cublas-cu12, nvidia-cudnn-cu12)
-    ne sont pas trouvées toutes seules : on ajoute leurs dossiers à la recherche des DLL."""
+    """Sous Windows, les bibliothèques NVIDIA installées par pip (nvidia-cublas-cu12, nvidia-cudnn-cu12…)
+    ne sont pas trouvées toutes seules : on ajoute chaque dossier nvidia/*/bin à la recherche des DLL."""
     if os.name != "nt":
         return
     import importlib.util
 
-    for pkg in ("nvidia.cublas", "nvidia.cudnn"):
-        spec = importlib.util.find_spec(pkg)
-        for folder in (spec.submodule_search_locations if spec else []):
-            bin_dir = Path(folder) / "bin"
-            if bin_dir.is_dir():
-                os.add_dll_directory(str(bin_dir))
-                os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+    spec = importlib.util.find_spec("nvidia")
+    for root in (spec.submodule_search_locations if spec else []):
+        for bin_dir in Path(root).glob("*/bin"):
+            os.add_dll_directory(str(bin_dir))
+            os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
 @lru_cache(maxsize=2)
