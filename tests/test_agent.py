@@ -474,3 +474,19 @@ def test_compte_rendu_word_keeps_only_what_was_dictated(tmp_path):
 def test_compte_rendu_tool_is_exposed(tmp_path):
     _, names = build_tools(_cfg(tmp_path), outbox=[])
     assert "mcp__perso__compte_rendu_visite" in names
+
+
+def test_compte_rendu_includes_photos_with_captions(tmp_path):
+    from docx import Document
+
+    from agent.compte_rendu import build
+
+    jpg = tmp_path / "photo.jpg"
+    # Plus petit JPEG valide (1 × 1 pixel).
+    jpg.write_bytes(bytes.fromhex(
+        "ffd8ffe000104a46494600010100000100010000ffdb004300080606070605080707070909080a0c140d0c0b0b0c1912130f141d1a1f1e1d1a1c1c20242e2720222c231c1c2837292c30313434341f27393d38323c2e333432"
+        "ffc0000b080001000101011100ffc4001f0000010501010101010100000000000000000102030405060708090a0bffc400b5100002010303020403050504040000017d01020300041105122131410613516107227114328191a1082342b1c11552d1f02433627282090a161718191a25262728292a3435363738393a434445464748494a535455565758595a636465666768696a737475767778797a838485868788898a92939495969798999aa2a3a4a5a6a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4d5d6d7d8d9dae1e2e3e4e5e6e7e8e9eaf1f2f3f4f5f6f7f8f9faffda0008010100003f00fbd3ffd9"))
+    dest = build(tmp_path / "cr.docx", "PR X", "2026-10-18", photos=[{"chemin": jpg, "legende": "Bride DN150"}])
+    doc = Document(dest)
+    assert len(doc.inline_shapes) == 1
+    assert any(p.text == "Photo 1 – Bride DN150" for p in doc.paragraphs)

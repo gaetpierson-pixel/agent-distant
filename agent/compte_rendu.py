@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Cm, Pt
 
 
 def file_name(date: str, affaire: str) -> str:
@@ -13,7 +13,9 @@ def file_name(date: str, affaire: str) -> str:
 
 
 def build(dest: Path, affaire: str, date: str, lieu: str = "", participants: str = "", objet: str = "",
-          constats: list[str] | None = None, actions: list[dict] | None = None, remarques: str = "") -> Path:
+          constats: list[str] | None = None, actions: list[dict] | None = None, remarques: str = "",
+          photos: list[dict] | None = None) -> Path:
+    """photos : [{"chemin": ..., "legende": ...}], placées à la fin, une par ligne, avec leur légende."""
     doc = Document()
     doc.styles["Normal"].font.name = "Calibri"
     doc.styles["Normal"].font.size = Pt(11)
@@ -47,6 +49,13 @@ def build(dest: Path, affaire: str, date: str, lieu: str = "", participants: str
     if remarques:
         doc.add_heading("Remarques", level=2)
         doc.add_paragraph(remarques)
+
+    if photos:
+        doc.add_heading("Photos", level=2)
+        for n, ph in enumerate(photos, 1):
+            doc.add_picture(str(ph["chemin"]), width=Cm(15))
+            caption = doc.add_paragraph(f"Photo {n}" + (f" – {ph['legende']}" if ph.get("legende") else ""))
+            caption.runs[0].italic = True
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     doc.save(dest)

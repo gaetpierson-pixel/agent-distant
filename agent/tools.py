@@ -91,7 +91,8 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
     @tool(
         "compte_rendu_visite",
         "Rédige un compte-rendu de visite en Word à partir de ce que Gaëtan a dicté, et le lui envoie. "
-        "date au format AAAA-MM-JJ. N'invente rien : un champ non dicté reste vide.",
+        "date au format AAAA-MM-JJ. photos : chemins des photos envoyées par Gaëtan, avec une légende tirée de ce qu'il a dit. "
+        "N'invente rien : un champ non dicté reste vide.",
         {
             "type": "object",
             "properties": {
@@ -110,12 +111,26 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
                     },
                 },
                 "remarques": {"type": "string"},
+                "photos": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"chemin": {"type": "string"}, "legende": {"type": "string"}},
+                        "required": ["chemin"],
+                    },
+                },
             },
             "required": ["affaire", "date"],
         },
     )
     async def compte_rendu_visite(args):
         dest = cfg.projects_dir / "comptes-rendus" / file_name(args["date"], args["affaire"])
+        photos = args.get("photos") or []
+        allowed = [cfg.projects_dir, cfg.notes_dir, *cfg.read_only_dirs]
+        for ph in photos:
+            path = Path(ph["chemin"]).expanduser()
+            if not is_inside(path, allowed) or not path.is_file():
+                return _text(f"Photo introuvable ou hors des dossiers autorisés : {path}")
         try:
             build(
                 dest,
@@ -127,6 +142,7 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
                 constats=args.get("constats") or [],
                 actions=args.get("actions") or [],
                 remarques=args.get("remarques", ""),
+                photos=photos,
             )
         except Exception as e:  # noqa: BLE001
             return _text(f"Compte-rendu non créé : {e}")
