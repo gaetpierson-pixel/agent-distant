@@ -631,3 +631,39 @@ def test_capture_only_opens_autodesk_links():
     assert not allowed_url("http://viewer.autodesk.com/id/abc")
     assert not allowed_url("https://viewer.autodesk.com.pirate.fr/id/abc")
     assert not allowed_url("https://example.com")
+
+
+def test_capture_opens_requested_sheet_after_declining_cookies(tmp_path):
+    import pytest
+
+    from agent import capture as cap
+
+    page = tmp_path / "viewer.html"
+    page.write_text(
+        "<html><head><meta charset='utf-8'></head><body><button id='onetrust-reject-all-handler' onclick=\"this.remove();document.title+='[cookies refusés]'\">Decline</button>"
+        "<ul><li onclick=\"document.title+='[AO-105]'\">AO-105 Coupe A-B-C-D-E</li><li>AO-101 Plan radier</li></ul>"
+        "<script>document.title='v'</script></body></html>",
+        encoding="utf-8",
+    )
+    from pathlib import Path
+
+    exe = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"
+    if not Path(exe).exists():
+        pytest.skip("pas de navigateur de test ici")
+
+    async def run(feuille):
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(executable_path=exe)
+            pg = await browser.new_page()
+            await pg.goto(page.as_uri())
+            await cap._decline_cookies(pg)
+            await cap._open_sheet(pg, feuille)
+            title = await pg.title()
+            await browser.close()
+            return title
+
+    assert asyncio.run(run("coupe a-b")) == "v[cookies refusés][AO-105]"
+    with pytest.raises(cap.SheetNotFound, match="AO-101 Plan radier, AO-105"):
+        asyncio.run(run("AO-999"))

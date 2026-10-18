@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .config import Config, is_inside
 from .documents import extract
-from .capture import allowed_url, capture
+from .capture import SheetNotFound, allowed_url, capture
 from .ifc import summarize as ifc_summary
 import shutil
 import time
@@ -203,8 +203,13 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
     @tool(
         "capturer_maquette",
         "Fait une image de la vue d'une maquette 3D et l'envoie à Gaëtan : lien Autodesk Viewer (https://viewer.autodesk.com/…) "
-        "ou maquette HTML (chemin complet). Regarde ensuite l'image avec Read pour la décrire.",
-        {"type": "object", "properties": {"adresse": {"type": "string"}}, "required": ["adresse"]},
+        "ou maquette HTML (chemin complet). feuille (facultatif) : numéro ou nom d'une feuille du lien Autodesk "
+        "(« AO-105 », « coupe A-B », « plan radier »), capturée en haute définition. Regarde ensuite l'image avec Read.",
+        {
+            "type": "object",
+            "properties": {"adresse": {"type": "string"}, "feuille": {"type": "string"}},
+            "required": ["adresse"],
+        },
     )
     async def capturer_maquette(args):
         target = args["adresse"].strip()
@@ -219,7 +224,9 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
                 return _text("Maquette introuvable.")
         dest = free_path(cfg.notes_dir / "medias" / f"{time.strftime('%Y-%m-%d_%H%M%S')}_capture.png")
         try:
-            await capture(target, dest)
+            await capture(target, dest, feuille=args.get("feuille", ""))
+        except SheetNotFound as e:
+            return _text(f"{e}. Demande à Gaëtan laquelle il veut.")
         except Exception as e:  # noqa: BLE001 - navigateur absent, lien expiré, délai dépassé…
             return _text(f"Capture impossible : {e}")
         if outbox is not None:
