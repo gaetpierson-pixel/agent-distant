@@ -12,6 +12,17 @@ WAIT_SECONDS = 40  # la visionneuse Autodesk charge la 3D en plusieurs dizaines 
 SHEET_WAIT_SECONDS = 25
 # Bandeau cookies (OneTrust sur Autodesk) : on refuse, ce qui le ferme sans rien accepter.
 COOKIE_BUTTONS = ("#onetrust-reject-all-handler", "button:has-text('Decline')", "button:has-text('Refuser')", "button:has-text('Tout refuser')")
+# Dernier recours avant la capture : retirer tout bloc fixe qui parle de cookies (le bandeau peut arriver après coup),
+# et fermer le panneau latéral de la visionneuse Autodesk. Rien n'est accepté : le bandeau est seulement enlevé de l'image.
+CLEAN_PAGE = """() => {
+  for (const el of document.querySelectorAll('body *')) {
+    const style = getComputedStyle(el);
+    if ((style.position === 'fixed' || style.position === 'sticky') && /cookie/i.test(el.innerText || '')) el.remove();
+  }
+  for (const el of document.querySelectorAll('[id*="onetrust" i], [class*="onetrust" i]')) el.remove();
+  for (const btn of document.querySelectorAll('.docking-panel-close')) btn.click();
+}"""
+
 # Numéros de feuille du type AO-105, PLN-01… : servent à dire à Gaëtan ce qui existe quand la feuille demandée manque.
 SHEET_NUMBER = re.compile(r"^[A-Z]{1,5}-\d{2,4}\b")
 
@@ -82,6 +93,16 @@ async def capture(target: str, dest: Path, wait: int = WAIT_SECONDS, feuille: st
                 await _open_sheet(page, feuille)
                 await asyncio.sleep(SHEET_WAIT_SECONDS)
                 await _decline_cookies(page)
+            for frame in page.frames:
+                try:
+                    await frame.get_by_text("Decline", exact=True).first.click(force=True, timeout=2000)
+                except Exception:  # noqa: BLE001 - pas de bouton dans ce cadre
+                    pass
+                try:
+                    await frame.evaluate(CLEAN_PAGE)
+                except Exception:  # noqa: BLE001
+                    pass
+            await asyncio.sleep(2)
             await page.screenshot(path=str(dest))
         finally:
             await browser.close()

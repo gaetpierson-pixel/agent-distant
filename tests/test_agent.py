@@ -682,3 +682,38 @@ def test_zoom_crops_and_enlarges(tmp_path):
 
     with pytest.raises(ValueError):
         zoom(src, tmp_path / "z2.png", "80,0,20,100")
+
+
+def test_clean_page_removes_late_cookie_banner(tmp_path):
+    import pytest
+    from pathlib import Path
+
+    from agent.capture import CLEAN_PAGE
+
+    exe = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome"
+    if not Path(exe).exists():
+        pytest.skip("pas de navigateur de test ici")
+    page = tmp_path / "p.html"
+    page.write_text(
+        "<html><head><meta charset='utf-8'></head><body><div id='plan'>Coupe D-D</div>"
+        "<div class='docking-panel'><span class='docking-panel-close' onclick='this.parentNode.remove()'>x</span>Vues</div>"
+        "<script>setTimeout(()=>{const d=document.createElement('div');d.style.position='fixed';d.style.bottom='0';"
+        "d.innerText='We use cookies';document.body.appendChild(d)},100)</script></body></html>",
+        encoding="utf-8",
+    )
+
+    async def run():
+        from playwright.async_api import async_playwright
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(executable_path=exe)
+            pg = await browser.new_page()
+            await pg.goto(page.as_uri())
+            await asyncio.sleep(0.3)
+            await pg.evaluate(CLEAN_PAGE)
+            text = await pg.locator("body").inner_text()
+            await browser.close()
+            return text
+
+    text = asyncio.run(run())
+    assert "Coupe D-D" in text and "cookies" not in text and "Vues" not in text
