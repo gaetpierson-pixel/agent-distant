@@ -1,5 +1,6 @@
 """Outils que l'agent peut utiliser en plus de ses outils de base (fichiers, web)."""
 
+import asyncio
 from typing import Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
@@ -253,7 +254,67 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
             outbox.append(dest)
         return _text(f"Zoom enregistré ici : {dest}. Il sera envoyé à Gaëtan. Lis-le avec Read ; ne donne une cote que si elle est lisible.")
 
-    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude, compte_rendu_visite, lire_maquette_ifc, capturer_maquette, zoomer_image]
+    def _gmail():
+        from .gmail_search import GmailSearch
+
+        return GmailSearch(cfg.gmail_perso, cfg.gmail_perso_password) if cfg.gmail_perso and cfg.gmail_perso_password else None
+
+    @tool(
+        "chercher_mails",
+        "Cherche dans les mails de Gaëtan, en lecture seule : sa boîte pro (Outlook du PC) et son Gmail perso. "
+        "mots : mots à trouver ; expediteur (facultatif) ; jours : période (180 par défaut) ; boite : pro, perso ou vide pour les deux.",
+        {
+            "type": "object",
+            "properties": {
+                "mots": {"type": "string"},
+                "expediteur": {"type": "string"},
+                "jours": {"type": "integer"},
+                "boite": {"type": "string", "enum": ["", "pro", "perso"]},
+            },
+            "required": ["mots"],
+        },
+    )
+    async def chercher_mails(args):
+        from .outlook import search
+
+        words, sender, days, box = args["mots"], args.get("expediteur", ""), args.get("jours", 180), args.get("boite", "")
+        parts = []
+        if box in ("", "pro"):
+            try:
+                parts.append("Boîte pro (Outlook) :\n" + await asyncio.to_thread(search, words, sender, days))
+            except Exception as e:  # noqa: BLE001 - Outlook fermé, pas sous Windows…
+                parts.append(f"Boîte pro : recherche impossible ({e}). Outlook doit être ouvert sur le PC.")
+        if box in ("", "perso"):
+            gmail = _gmail()
+            if gmail is None:
+                parts.append("Gmail perso : pas encore branché.")
+            else:
+                try:
+                    parts.append("Gmail perso :\n" + await asyncio.to_thread(gmail.search, words, sender, days))
+                except Exception as e:  # noqa: BLE001
+                    parts.append(f"Gmail perso : recherche impossible ({e}).")
+        return _text("\n\n".join(parts))
+
+    @tool(
+        "lire_mail",
+        "Lit un mail trouvé par chercher_mails (son id), en lecture seule, et copie ses pièces jointes pour les lire ensuite.",
+        {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
+    )
+    async def lire_mail(args):
+        from .outlook import read
+
+        folder = cfg.notes_dir / "medias" / "pieces-jointes"
+        try:
+            if args["id"].startswith("gmail:"):
+                gmail = _gmail()
+                if gmail is None:
+                    return _text("Gmail perso : pas encore branché.")
+                return _text(await asyncio.to_thread(gmail.read, args["id"][len("gmail:"):], folder))
+            return _text(await asyncio.to_thread(read, args["id"], folder))
+        except Exception as e:  # noqa: BLE001
+            return _text(f"Lecture impossible : {e}")
+
+    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude, compte_rendu_visite, lire_maquette_ifc, capturer_maquette, zoomer_image, chercher_mails, lire_mail]
     server = create_sdk_mcp_server(name="perso", tools=tools)
     names = [f"mcp__perso__{t.name}" for t in tools]
     return server, names

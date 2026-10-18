@@ -1,3 +1,4 @@
+from pathlib import Path
 import asyncio
 import base64
 from datetime import datetime
@@ -717,3 +718,103 @@ def test_clean_page_removes_late_cookie_banner(tmp_path):
 
     text = asyncio.run(run())
     assert "Coupe D-D" in text and "cookies" not in text and "Vues" not in text
+
+
+class _Items(list):
+    def Restrict(self, _filter):
+        return self
+
+
+class _Folder:
+    def __init__(self, name, items=(), subs=()):
+        self.Name, self.Items, self.Folders, self.DefaultItemType = name, _Items(items), list(subs), 0
+
+
+class _Attachments:
+    def __init__(self, files):
+        self.files, self.Count = files, len(files)
+
+    def Item(self, i):
+        return self.files[i - 1]
+
+
+class _Att:
+    FileName = "devis vannes.pdf"
+
+    def SaveAsFile(self, path):
+        Path(path).write_bytes(b"%PDF")
+
+
+class _Mail:
+    Class = 43
+
+    def __init__(self, subject, body, sender, when, files=()):
+        from datetime import datetime
+
+        self.Subject, self.Body, self.SenderName, self.SenderEmailAddress = subject, body, sender, f"{sender.lower()}@epur.fr"
+        self.ReceivedTime, self.Attachments, self.EntryID, self.To = datetime.fromisoformat(when), _Attachments(list(files)), subject, "gaetan"
+
+
+def test_outlook_search_and_read_are_read_only(tmp_path):
+    from agent.outlook import read, search
+
+    perrier = _Mail("Perrier délais", "Le client décale la pose à fin novembre.", "Marc", "2026-10-10T09:00", [_Att()])
+    other = _Mail("Béziers", "Rien à voir", "Paul", "2026-10-11T09:00")
+    trash = _Mail("Perrier ancien", "délais", "Marc", "2026-10-12T09:00")
+    inbox = _Folder("Boîte de réception", [perrier, other], [_Folder("Chantiers", [])])
+    store = _Folder("gaetan@alliance.fr", [], [inbox, _Folder("Éléments supprimés", [trash])])
+
+    class NS:
+        Folders = [store]
+
+        def GetItemFromID(self, entry_id):
+            return {"Perrier délais": perrier}[entry_id]
+
+    out = search("perrier delais", ns=NS())
+    assert "1 mail(s)" in out and "Marc <marc@epur.fr>" in out and "1 pièce(s) jointe(s)" in out
+    assert "ancien" not in out  # corbeille ignorée
+    assert "Aucun mail" in search("perrier", sender="Paul", ns=NS())
+    text = read("Perrier délais", tmp_path / "pj", ns=NS())
+    assert "fin novembre" in text and (tmp_path / "pj" / "2026-10-10_devis vannes.pdf").exists()
+
+
+def test_gmail_perso_search_is_read_only(tmp_path):
+    from email.message import EmailMessage
+
+    from agent.gmail_search import GmailSearch
+
+    msg = EmailMessage()
+    msg["From"], msg["To"], msg["Subject"] = "Marc <marc@epur.fr>", "gaet.pierson@gmail.com", "Perrier délais"
+    msg["Date"] = "Sat, 10 Oct 2026 09:00:00 +0200"
+    msg.set_content("Pose décalée à fin novembre.")
+    msg.add_attachment(b"%PDF", maintype="application", subtype="pdf", filename="planning.pdf")
+    raw = msg.as_bytes()
+    calls = []
+
+    class FakeImap:
+        def login(self, *a):
+            pass
+
+        def list(self):
+            return "OK", [b'(\\HasNoChildren) "/" "INBOX"', b'(\\All \\HasNoChildren) "/" "[Gmail]/Tous les messages"']
+
+        def select(self, box, readonly=False):
+            calls.append(("select", box, readonly))
+
+        def uid(self, cmd, *args):
+            calls.append((cmd, *args))
+            if cmd == "SEARCH":
+                return "OK", [b"7"]
+            return "OK", [(b"7", raw)]
+
+        def logout(self):
+            pass
+
+    g = GmailSearch("gaet.pierson@gmail.com", "abcd efgh", connect=FakeImap)
+    out = g.search("perrier delais", days=90)
+    assert "Perrier délais" in out and "id=gmail:7" in out
+    assert ("select", '"[Gmail]/Tous les messages"', True) in calls
+    assert all("PEEK" in c[2] for c in calls if c[0] == "FETCH")
+    assert ("SEARCH", "X-GM-RAW", '"perrier delais newer_than:90d"') in calls
+    text = g.read("7", tmp_path / "pj")
+    assert "fin novembre" in text and (tmp_path / "pj" / "planning.pdf").exists()

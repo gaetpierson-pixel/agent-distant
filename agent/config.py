@@ -38,6 +38,9 @@ class Config:
     # Dossier des chantiers (…\02 - DEVIS) où l'agent peut AJOUTER ses comptes-rendus, jamais modifier. Vide : il les garde chez lui.
     cr_root: Path | None = None
     cr_subfolder: str = "00 - ETUDE"
+    # Gmail perso de Gaëtan, en lecture seule (mot de passe d'application). Vide : pas de recherche dans ce Gmail.
+    gmail_perso: str = ""
+    gmail_perso_password: str = ""
     state_dir: Path = ROOT / "state"
 
 
@@ -71,6 +74,8 @@ def load_config() -> Config:
         read_only_dirs=[Path(d.strip()).expanduser() for d in os.getenv("READ_ONLY_DIRS", "").split(";") if d.strip()],
         cr_root=Path(os.environ["CR_DOSSIER_CHANTIERS"].strip()).expanduser() if os.getenv("CR_DOSSIER_CHANTIERS", "").strip() else None,
         cr_subfolder=os.getenv("CR_SOUS_DOSSIER", "00 - ETUDE"),
+        gmail_perso=os.getenv("GMAIL_PERSO_ADRESSE", ""),
+        gmail_perso_password=os.getenv("GMAIL_PERSO_MOT_DE_PASSE", ""),
     )
     for d in (cfg.projects_dir, cfg.notes_dir, cfg.state_dir):
         d.mkdir(parents=True, exist_ok=True)

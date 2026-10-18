@@ -13,3 +13,4 @@ piper-tts
 pillow
 ifcopenshell
 playwright
+pywin32; sys_platform == "win32"
