@@ -25,7 +25,15 @@ def allowed_url(url: str) -> bool:
     return urlparse(url).scheme == "https" and any(host == h or host.endswith("." + h) for h in ALLOWED_HOSTS)
 
 
+# Si le clic de refus échoue, on masque simplement le bandeau : rien n'est accepté pour autant.
+HIDE_BANNERS = "#onetrust-consent-sdk, #onetrust-banner-sdk, [id*='cookie' i], [class*='cookie-banner' i] { display: none !important; }"
+
+
 async def _decline_cookies(page) -> None:
+    try:
+        await page.add_style_tag(content=HIDE_BANNERS)
+    except Exception:  # noqa: BLE001
+        pass
     for selector in COOKIE_BUTTONS:
         button = page.locator(selector).first
         try:
@@ -65,8 +73,8 @@ async def capture(target: str, dest: Path, wait: int = WAIT_SECONDS, feuille: st
             args=["--ignore-gpu-blocklist", "--enable-webgl", "--use-angle=swiftshader"],
         )
         try:
-            # Pour une feuille, image deux fois plus fine : les cotes et le cartouche restent lisibles.
-            page = await browser.new_page(viewport={"width": 1600, "height": 1000}, device_scale_factor=2 if feuille else 1)
+            # Pour une feuille, image trois fois plus fine : les cotes et le cartouche restent lisibles.
+            page = await browser.new_page(viewport={"width": 1600, "height": 1000}, device_scale_factor=3 if feuille else 1)
             await page.goto(url, timeout=90_000)
             await asyncio.sleep(wait)
             await _decline_cookies(page)
@@ -77,4 +85,23 @@ async def capture(target: str, dest: Path, wait: int = WAIT_SECONDS, feuille: st
             await page.screenshot(path=str(dest))
         finally:
             await browser.close()
+    return dest
+
+
+def zoom(src: Path, dest: Path, zone: str) -> Path:
+    """Agrandit une partie d'une capture. zone = « gauche,haut,droite,bas » en % de l'image (ex. « 50,40,100,100 »)."""
+    from PIL import Image
+
+    g, h, d, b = (float(x) for x in zone.replace(" ", "").split(","))
+    if not (0 <= g < d <= 100 and 0 <= h < b <= 100):
+        raise ValueError("zone attendue : gauche,haut,droite,bas en %, avec gauche < droite et haut < bas")
+    img = Image.open(src)
+    w, ht = img.size
+    part = img.crop((int(w * g / 100), int(ht * h / 100), int(w * d / 100), int(ht * b / 100)))
+    # Petite zone : on l'agrandit pour que les cotes restent lisibles à l'écran du téléphone.
+    if part.width < 1600:
+        ratio = 1600 / part.width
+        part = part.resize((1600, round(part.height * ratio)), Image.LANCZOS)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part.save(dest)
     return dest

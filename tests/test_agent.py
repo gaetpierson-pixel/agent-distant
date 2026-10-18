@@ -667,3 +667,18 @@ def test_capture_opens_requested_sheet_after_declining_cookies(tmp_path):
     assert asyncio.run(run("coupe a-b")) == "v[cookies refusés][AO-105]"
     with pytest.raises(cap.SheetNotFound, match="AO-101 Plan radier, AO-105"):
         asyncio.run(run("AO-999"))
+
+
+def test_zoom_crops_and_enlarges(tmp_path):
+    from PIL import Image
+
+    from agent.capture import zoom
+
+    src = tmp_path / "feuille.png"
+    Image.new("RGB", (3200, 2000), "white").save(src)
+    out = Image.open(zoom(src, tmp_path / "z.png", "50,50,75,100"))
+    assert out.size == (1600, 2000)  # 800 × 1000 agrandi à 1600 de large
+    import pytest
+
+    with pytest.raises(ValueError):
+        zoom(src, tmp_path / "z2.png", "80,0,20,100")

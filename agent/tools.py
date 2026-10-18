@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .config import Config, is_inside
 from .documents import extract
-from .capture import SheetNotFound, allowed_url, capture
+from .capture import SheetNotFound, allowed_url, capture, zoom
 from .ifc import summarize as ifc_summary
 import shutil
 import time
@@ -233,7 +233,27 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
             outbox.append(dest)
         return _text(f"Capture enregistrée ici : {dest}. Elle sera envoyée à Gaëtan. Regarde-la avec Read avant de la décrire.")
 
-    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude, compte_rendu_visite, lire_maquette_ifc, capturer_maquette]
+    @tool(
+        "zoomer_image",
+        "Agrandit une zone d'une capture ou d'une photo pour lire les cotes, DN et niveaux, et l'envoie à Gaëtan. "
+        "zone = « gauche,haut,droite,bas » en % de l'image (ex. « 50,40,100,100 » pour le quart bas droit). "
+        "Regarde d'abord l'image entière avec Read pour situer la zone, puis le zoom avec Read.",
+        {"type": "object", "properties": {"chemin": {"type": "string"}, "zone": {"type": "string"}}, "required": ["chemin", "zone"]},
+    )
+    async def zoomer_image(args):
+        src = Path(args["chemin"]).expanduser()
+        if not is_inside(src, [cfg.projects_dir, cfg.notes_dir, *cfg.read_only_dirs]) or not src.is_file():
+            return _text("Image introuvable ou hors des dossiers autorisés.")
+        dest = free_path(cfg.notes_dir / "medias" / f"{src.stem}_zoom.png")
+        try:
+            zoom(src, dest, args["zone"])
+        except Exception as e:  # noqa: BLE001
+            return _text(f"Zoom impossible : {e}")
+        if outbox is not None:
+            outbox.append(dest)
+        return _text(f"Zoom enregistré ici : {dest}. Il sera envoyé à Gaëtan. Lis-le avec Read ; ne donne une cote que si elle est lisible.")
+
+    tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude, compte_rendu_visite, lire_maquette_ifc, capturer_maquette, zoomer_image]
     server = create_sdk_mcp_server(name="perso", tools=tools)
     names = [f"mcp__perso__{t.name}" for t in tools]
     return server, names
