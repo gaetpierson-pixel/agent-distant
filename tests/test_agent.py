@@ -568,3 +568,29 @@ def test_report_goes_to_chantier_folder_and_creates_it(tmp_path):
         pass
     assert chantier_folder(root, "2026", "Saint-Louis").name == "2026-XXX-X - CLIENT - SAINT LOUIS"
     assert chantier_folder(root, "2026", "Colmar", "Suez").name == "2026-XXX-X - SUEZ - COLMAR"
+
+
+def test_session_restarts_after_update_or_on_request(tmp_path, monkeypatch):
+    import json
+    from datetime import date
+
+    from agent import brain as brain_mod
+
+    b = brain_mod.Brain.__new__(brain_mod.Brain)
+    b.cfg, b.outbox = _cfg(tmp_path), []
+    b.cfg.state_dir.mkdir(parents=True)
+    b.sessions_file = b.cfg.state_dir / "sessions.json"
+    b.sessions_file.write_text(json.dumps({"telegram": {"id": "old", "day": date.today().isoformat(), "version": "ancienne"}}))
+    seen = {}
+
+    async def fake_query(prompt, options):
+        seen["resume"] = options.resume
+        return
+        yield
+
+    b._options = lambda resume: type("O", (), {"resume": resume})()
+    monkeypatch.setattr(brain_mod, "query", fake_query)
+    asyncio.run(b.handle("bonjour", channel="telegram"))
+    assert seen["resume"] is None  # code mis à jour : pas de reprise
+    assert "neuve" in asyncio.run(b.handle("Nouvelle conversation", channel="telegram"))
+    assert "telegram" not in json.loads(b.sessions_file.read_text())

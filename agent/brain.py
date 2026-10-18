@@ -1,5 +1,6 @@
 """Le cerveau : reçoit une demande en texte, travaille avec ses outils, renvoie une réponse."""
 
+import hashlib
 import json
 import logging
 import re
@@ -16,6 +17,15 @@ from .tools import build_tools
 
 # « Lance une tâche Claude : … » : lancé directement, sans laisser le modèle choisir de faire le travail lui-même.
 TASK_ASK = re.compile(r"t[âa]ches?\s+claude\b\s*[:,.\-–]?\s*", re.IGNORECASE)
+
+# Empreinte du code de l'agent : après une mise à jour, la conversation du jour repart à zéro,
+# sinon l'agent garde en tête ce qu'il ne savait pas faire avant (« je ne peux pas insérer de photo »…).
+CODE_VERSION = hashlib.sha1(
+    b"".join(f.read_bytes() for f in sorted(Path(__file__).parent.glob("*.py")))
+).hexdigest()[:12]
+
+# « nouvelle conversation » : Gaëtan repart d'une page blanche quand l'agent s'embrouille.
+RESET_ASK = re.compile(r"^\W*(nouvelle conversation|on repart de z[ée]ro|/nouveau)\W*$", re.IGNORECASE)
 
 # Outils de base autorisés. Pas de "Bash" : l'agent ne lance aucune commande sur le PC.
 BUILTIN_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep", "WebSearch", "WebFetch"]
@@ -94,7 +104,7 @@ class Brain:
 
     def _save_session(self, channel: str, session_id: str) -> None:
         sessions = self._load_sessions()
-        sessions[channel] = {"id": session_id, "day": date.today().isoformat()}
+        sessions[channel] = {"id": session_id, "day": date.today().isoformat(), "version": CODE_VERSION}
         self.sessions_file.write_text(json.dumps(sessions, indent=2), encoding="utf-8")
 
     def launch_task(self, consigne: str) -> str:
@@ -112,8 +122,14 @@ class Brain:
         ask = TASK_ASK.search(text)
         if ask and self.cfg.routine_url and self.cfg.routine_token:
             return self.launch_task(text[ask.end():].strip() or text)
+        if RESET_ASK.match(text):
+            sessions = self._load_sessions()
+            sessions.pop(channel, None)
+            self.sessions_file.write_text(json.dumps(sessions, indent=2), encoding="utf-8")
+            return "C'est fait, on repart d'une conversation neuve."
         previous = self._load_sessions().get(channel)
-        resume = previous["id"] if previous and previous["day"] == date.today().isoformat() else None
+        same = previous and previous["day"] == date.today().isoformat() and previous.get("version") == CODE_VERSION
+        resume = previous["id"] if same else None
 
         prompt = f"[{datetime.now():%H:%M}, via {channel}] {text}"
         parts: list[str] = []

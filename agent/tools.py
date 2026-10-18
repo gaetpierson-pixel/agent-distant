@@ -96,7 +96,7 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
         "Rédige un compte-rendu de visite en Word à partir de ce que Gaëtan a dicté, et le lui envoie. "
         "date au format AAAA-MM-JJ. chantier et client (seulement s'il les a dits) servent à trouver ou créer le dossier du chantier. "
         "Les photos et vidéos reçues ce jour-là depuis le dernier compte-rendu sont jointes d'office ; "
-        "photos sert seulement à leur donner une légende tirée de ce qu'il a dit. "
+        "photos sert seulement à leur donner une légende tirée de ce qu'il a dit. Cet outil INSÈRE lui-même les photos dans le Word. "
         "N'invente rien : un champ non dicté reste vide.",
         {
             "type": "object",
