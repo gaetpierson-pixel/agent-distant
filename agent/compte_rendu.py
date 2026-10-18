@@ -1,6 +1,7 @@
 """Compte-rendu de visite en Word, à partir de ce que Gaëtan a dicté."""
 
 import re
+import unicodedata
 from pathlib import Path
 
 from docx import Document
@@ -73,7 +74,7 @@ def pending_media(medias: Path, since: float, day: str) -> tuple[list[Path], lis
     if not medias.is_dir():
         return [], []
     files = sorted(f for f in medias.iterdir() if f.name.startswith(day) and f.stat().st_mtime > since)
-    return [f for f in files if "_photo." in f.name], [f for f in files if "_video." in f.name]
+    return [f for f in files if "_photo." in f.name], [f for f in files if "_video." in f.name and f.is_file()]
 
 
 def free_path(path: Path) -> Path:
@@ -83,3 +84,32 @@ def free_path(path: Path) -> Path:
         candidate = path.with_name(f"{path.stem}_{n}{path.suffix}")
         n += 1
     return candidate
+
+
+def _words(text: str) -> list[str]:
+    plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().upper()
+    return re.findall(r"[A-Z0-9]+", plain)
+
+
+class SeveralFolders(Exception):
+    def __init__(self, folders: list[Path]):
+        super().__init__(" ; ".join(f.name for f in folders))
+        self.folders = folders
+
+
+def chantier_folder(root: Path, year: str, chantier: str, client: str = "") -> Path:
+    """Dossier du chantier dans root/année : celui dont le nom contient tous les mots dictés (chantier et client).
+    Sinon, il en crée un sur le modèle « 2026-XXX-X - CLIENT - NOM » ; Gaëtan le renumérote ensuite."""
+    wanted = _words(f"{client} {chantier}")
+    year_dir = root / year
+    matches = []
+    if year_dir.is_dir():
+        matches = [d for d in year_dir.iterdir() if d.is_dir() and all(w in _words(d.name) for w in wanted)]
+    if len(matches) > 1:
+        raise SeveralFolders(matches)
+    if matches:
+        return matches[0]
+    name = " ".join(_words(chantier)) or "NOM"
+    folder = year_dir / f"{year}-XXX-X - {' '.join(_words(client)) or 'CLIENT'} - {name}"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder

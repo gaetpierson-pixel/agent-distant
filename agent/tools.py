@@ -11,7 +11,7 @@ from .documents import extract
 import shutil
 import time
 
-from .compte_rendu import build, file_name, free_path, pending_media
+from .compte_rendu import SeveralFolders, build, chantier_folder, file_name, free_path, pending_media
 from .routine import fire
 from .notes import add_note
 
@@ -94,13 +94,16 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
     @tool(
         "compte_rendu_visite",
         "Rédige un compte-rendu de visite en Word à partir de ce que Gaëtan a dicté, et le lui envoie. "
-        "date au format AAAA-MM-JJ. Les photos et vidéos reçues ce jour-là depuis le dernier compte-rendu sont jointes d'office ; "
+        "date au format AAAA-MM-JJ. chantier et client (seulement s'il les a dits) servent à trouver ou créer le dossier du chantier. "
+        "Les photos et vidéos reçues ce jour-là depuis le dernier compte-rendu sont jointes d'office ; "
         "photos sert seulement à leur donner une légende tirée de ce qu'il a dit. "
         "N'invente rien : un champ non dicté reste vide.",
         {
             "type": "object",
             "properties": {
                 "affaire": {"type": "string"},
+                "chantier": {"type": "string"},
+                "client": {"type": "string"},
                 "date": {"type": "string"},
                 "lieu": {"type": "string"},
                 "participants": {"type": "string"},
@@ -142,7 +145,15 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
         ordered = list(captions) + [p.resolve() for p in new_photos if p.resolve() not in captions]
         photos = [{"chemin": p, "legende": captions.get(p, "")} for p in ordered]
 
-        dest = free_path(cfg.projects_dir / "comptes-rendus" / file_name(args["date"], args["affaire"]))
+        folder = cfg.projects_dir / "comptes-rendus"
+        if cfg.cr_root:
+            try:
+                # Seul endroit où l'agent écrit dans les dossiers partagés : ajout de fichiers neufs uniquement.
+                chantier = chantier_folder(cfg.cr_root, args["date"][:4], args.get("chantier") or args["affaire"], args.get("client", ""))
+            except SeveralFolders as e:
+                return _text(f"Plusieurs dossiers de chantier correspondent : {e}. Demande à Gaëtan lequel, puis recommence avec le client ou un nom plus précis.")
+            folder = chantier / cfg.cr_subfolder
+        dest = free_path(folder / file_name(args["date"], args["affaire"]))
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
             for v in videos:
@@ -167,7 +178,7 @@ def build_tools(cfg: Config, gmail=None, calendar=None, outbox: list | None = No
             outbox.append(dest)
         return _text(
             f"Compte-rendu enregistré ici : {dest} ({len(photos)} photo(s), {len(videos)} vidéo(s)). "
-            "Il sera envoyé à Gaëtan avec ta réponse."
+            "Il sera envoyé à Gaëtan avec ta réponse : dis-lui où il est rangé, et si un dossier de chantier a été créé."
         )
 
     tools = [noter, preparer_mail, agenda_lister, agenda_ajouter, lire_document, lancer_tache_claude, compte_rendu_visite]

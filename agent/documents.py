@@ -40,7 +40,10 @@ def _pdf(path: Path) -> str:
     parts = [f"## Page {i}\n{(page.extract_text() or '').strip()}" for i, page in enumerate(reader.pages, 1)]
     text = "\n".join(parts)
     if not any((page.extract_text() or "").strip() for page in reader.pages[:5]):
-        return "Ce PDF ne contient pas de texte lisible (probablement un scan ou un plan en image)."
+        return (
+            "Ce PDF ne contient pas de texte lisible (probablement un scan ou un plan en image). "
+            "Ouvre-le avec l'outil Read (paramètre pages, par exemple \"1-5\") pour voir ses pages en images."
+        )
     return text
 
 

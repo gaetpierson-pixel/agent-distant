@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -97,29 +98,43 @@ class Offset:
         self.path.write_text(str(value))
 
 
-# Vidéo envoyée sans texte : gardée pour le prochain compte-rendu, sans déranger le cerveau.
-KEPT = "[média gardé]"
-
-
-def _image_or_video(msg: dict) -> tuple[str, str, str] | None:
-    """(file_id, type, extension) d'une photo ou d'une vidéo, qu'elle arrive en photo, en vidéo ou en fichier."""
+def _media(msg: dict) -> tuple[str, str, str] | None:
+    """(file_id, type, nom de fichier) d'une photo, d'une vidéo ou d'un fichier joint (PDF, Excel, Word…)."""
     if msg.get("photo"):
         # Telegram donne plusieurs tailles : la dernière est la plus grande.
-        return msg["photo"][-1]["file_id"], "photo", "jpg"
+        return msg["photo"][-1]["file_id"], "photo", "photo.jpg"
     for key in ("video", "video_note"):
         if msg.get(key):
-            return msg[key]["file_id"], "video", "mp4"
-    doc = msg.get("document") or {}
-    mime = doc.get("mime_type", "")
-    if mime.startswith("image/"):
-        return doc["file_id"], "photo", "png" if mime == "image/png" else "jpg"
-    if mime.startswith("video/"):
-        return doc["file_id"], "video", Path(doc.get("file_name", "v.mp4")).suffix.lstrip(".") or "mp4"
+            return msg[key]["file_id"], "video", "video.mp4"
+    doc = msg.get("document")
+    if doc:
+        mime = doc.get("mime_type", "")
+        if mime.startswith("image/"):
+            return doc["file_id"], "photo", "photo.png" if mime == "image/png" else "photo.jpg"
+        if mime.startswith("video/"):
+            return doc["file_id"], "video", "video" + (Path(doc.get("file_name", "")).suffix or ".mp4")
+        name = re.sub(r'[\\/:*?"<>|]+', "_", doc.get("file_name") or "fichier")
+        return doc["file_id"], "fichier", name
     return None
 
 
+def _video_request(path: Path, cfg: Config, caption: str) -> str:
+    from .video import frames, has_audio
+
+    shots = frames(path, path.parent / f"{path.stem}_images")
+    lines = [f"[Vidéo envoyée par Gaëtan, enregistrée ici : {path}. Images extraites (lis-les avec Read) :"]
+    lines += [f"- {s}" for s in shots]
+    if has_audio(path):
+        from .voice import transcribe
+
+        lines.append(f"Son de la vidéo, transcription automatique : {transcribe(path, cfg.whisper_model)}")
+    lines.append("]")
+    lines.append(caption or "Pas de légende : décris en deux lignes ce que montre la vidéo ; elle est gardée pour le prochain compte-rendu.")
+    return "\n".join(lines)
+
+
 def to_request(bot, cfg: Config, msg: dict) -> str:
-    """Transforme le message en demande texte : vocal transcrit, photo ou vidéo enregistrée sur le PC."""
+    """Transforme le message en demande texte : vocal transcrit, photo, vidéo ou fichier enregistrés sur le PC."""
     caption = msg.get("text") or msg.get("caption") or ""
     stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S_%f")
     media = cfg.notes_dir / "medias"
@@ -128,20 +143,23 @@ def to_request(bot, cfg: Config, msg: dict) -> str:
 
         audio = bot.download((msg.get("voice") or msg["audio"])["file_id"], media / f"{stamp}_vocal.ogg")
         return f"[Message vocal, transcription automatique, à prendre avec prudence]\n{transcribe(audio, cfg.whisper_model)}"
-    found = _image_or_video(msg)
-    if found:
-        file_id, kind, ext = found
-        path = bot.download(file_id, media / f"{stamp}_{kind}.{ext}")
-        if kind == "video":
-            if not caption:
-                return KEPT
-            return f"[Vidéo envoyée par Gaëtan, enregistrée ici : {path}. Tu ne peux pas la regarder.]\n{caption}"
-        return f"[Photo envoyée par Gaëtan, enregistrée ici : {path}. Lis-la avec l'outil Read.]\n" + (
-            caption
-            or "Pas de légende. Si c'est une note manuscrite, retranscris-la et enregistre-la avec `noter`. "
-            "Sinon, réponds juste en une ligne que la photo est gardée pour le prochain compte-rendu."
+    found = _media(msg)
+    if not found:
+        return caption
+    file_id, kind, name = found
+    path = bot.download(file_id, media / f"{stamp}_{name}")
+    if kind == "video":
+        return _video_request(path, cfg, caption)
+    if kind == "fichier":
+        return (
+            f"[Fichier envoyé par Gaëtan, enregistré ici : {path}. Lis-le avec `lire_document` (Excel, Word, PDF) ou Read.]\n"
+            + (caption or "Pas de message : résume-le en quelques lignes.")
         )
-    return caption
+    return f"[Photo envoyée par Gaëtan, enregistrée ici : {path}. Lis-la avec l'outil Read.]\n" + (
+        caption
+        or "Pas de légende. Si c'est une note manuscrite, retranscris-la et enregistre-la avec `noter`. "
+        "Sinon, réponds juste en une ligne que la photo est gardée pour le prochain compte-rendu."
+    )
 
 
 async def handle_update(bot, brain: Brain, cfg: Config, update: dict) -> bool:
@@ -162,11 +180,8 @@ async def handle_update(bot, brain: Brain, cfg: Config, update: dict) -> bool:
         bot.send(chat, f"Je n'ai pas pu lire ce message : {e}")
         return False
     if not text:
-        bot.send(chat, "Je ne sais lire que le texte, les vocaux, les photos et les vidéos.")
+        bot.send(chat, "Je ne sais lire que le texte, les vocaux, les photos, les vidéos et les fichiers.")
         return False
-    if text == KEPT:
-        bot.send(chat, "Reçu, je le garde pour le prochain compte-rendu. Ajoute un texte si tu veux autre chose.")
-        return True
     log.info("Tâche Telegram reçue : %s", text[:80])
     try:
         answer = await brain.handle(text, channel="telegram")

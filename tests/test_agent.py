@@ -514,7 +514,7 @@ def test_media_since_last_report_are_picked_up(tmp_path):
 
 
 def test_photo_sent_as_file_and_video_are_kept(tmp_path):
-    from agent.telegram_channel import KEPT, to_request
+    from agent.telegram_channel import to_request
 
     class Bot:
         def download(self, file_id, dest):
@@ -525,6 +525,46 @@ def test_photo_sent_as_file_and_video_are_kept(tmp_path):
     cfg = _cfg(tmp_path)
     as_file = to_request(Bot(), cfg, {"document": {"file_id": "a", "mime_type": "image/jpeg"}})
     assert "Lis-la avec l'outil Read" in as_file
-    assert to_request(Bot(), cfg, {"video": {"file_id": "b"}}) == KEPT
+    pdf = to_request(Bot(), cfg, {"document": {"file_id": "c", "mime_type": "application/pdf", "file_name": "plan.pdf"}})
+    assert "lire_document" in pdf
     names = sorted(f.name.split("_")[-1] for f in (cfg.notes_dir / "medias").iterdir())
-    assert names == ["photo.jpg", "video.mp4"]
+    assert names == ["photo.jpg", "plan.pdf"]
+
+
+def test_video_frames_are_spread_and_capped(tmp_path):
+    import av
+    import numpy as np
+
+    from agent.video import frames, has_audio
+
+    path = tmp_path / "v.mp4"
+    with av.open(str(path), "w") as out:
+        stream = out.add_stream("mpeg4", rate=5)
+        stream.width, stream.height, stream.pix_fmt = 64, 48, "yuv420p"
+        for i in range(5 * 30):  # 30 secondes à 5 images/s
+            frame = av.VideoFrame.from_ndarray(np.full((48, 64, 3), i % 255, dtype=np.uint8), format="rgb24")
+            for packet in stream.encode(frame):
+                out.mux(packet)
+        for packet in stream.encode():
+            out.mux(packet)
+    shots = frames(path, tmp_path / "img", every=4, max_frames=5)
+    assert len(shots) == 5 and all(s.exists() for s in shots)
+    assert not has_audio(path)
+
+
+def test_report_goes_to_chantier_folder_and_creates_it(tmp_path):
+    from agent.compte_rendu import SeveralFolders, chantier_folder
+
+    root = tmp_path / "02 - DEVIS"
+    (root / "2026" / "2026-042-1 - EPUR - PERRIER NEW" / "00 - ETUDE").mkdir(parents=True)
+    (root / "2026" / "2026-050-1 - VEOLIA - GUEBWILLER").mkdir()
+    (root / "2026" / "2026-051-1 - EPUR - GUEBWILLER").mkdir()
+    assert chantier_folder(root, "2026", "Perrier").name == "2026-042-1 - EPUR - PERRIER NEW"
+    assert chantier_folder(root, "2026", "Guebwiller", "Épur").name == "2026-051-1 - EPUR - GUEBWILLER"
+    try:
+        chantier_folder(root, "2026", "Guebwiller")
+        raise AssertionError("deux dossiers auraient dû être signalés")
+    except SeveralFolders:
+        pass
+    assert chantier_folder(root, "2026", "Saint-Louis").name == "2026-XXX-X - CLIENT - SAINT LOUIS"
+    assert chantier_folder(root, "2026", "Colmar", "Suez").name == "2026-XXX-X - SUEZ - COLMAR"

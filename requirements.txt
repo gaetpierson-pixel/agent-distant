@@ -10,3 +10,4 @@ pypdf
 icalendar
 recurring-ical-events
 piper-tts
+pillow
