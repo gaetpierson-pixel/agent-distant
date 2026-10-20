@@ -23,7 +23,41 @@ class Config:
     # Plafond de dépense par tâche, en dollars.
     max_budget_usd: float = 0.50
     poll_seconds: int = 60
+    # Identifiants Telegram (nombres) autorisés à donner des ordres au robot de l'agent.
+    telegram_allowed: list[int] = field(default_factory=list)
+    # Dossiers de Gaëtan que l'agent peut lire mais jamais modifier (par exemple le SharePoint synchronisé).
+    read_only_dirs: list[Path] = field(default_factory=list)
+    # Modèle de transcription des vocaux (tiny, base, small, medium) : plus gros = plus juste mais plus lent.
+    whisper_model: str = "small"
+    # cpu, ou cuda pour transcrire sur la carte graphique NVIDIA (retombe sur le processeur en cas d'échec).
+    whisper_device: str = "cpu"
+    # Répondre en vocal aux vocaux (voix de synthèse Piper, fabriquée sur le PC).
+    # Déclencheur API d'une routine Claude Code (claude.ai/code/routines) : URL et jeton.
+    routine_url: str = ""
+    routine_token: str = ""
+    voice_replies: bool = True
+    tts_voice: str = "fr_FR-siwis-medium"
+    # Dossier des chantiers (…\02 - DEVIS) où l'agent peut AJOUTER ses comptes-rendus, jamais modifier. Vide : il les garde chez lui.
+    cr_root: Path | None = None
+    cr_subfolder: str = "00 - ETUDE"
+    # Gmail perso de Gaëtan, en lecture seule (mot de passe d'application). Vide : pas de recherche dans ce Gmail.
+    gmail_perso: str = ""
+    gmail_perso_password: str = ""
+    # Adresses des boîtes Outlook du PC que l'agent peut lire (le PC est partagé). Vide : aucune recherche Outlook.
+    outlook_accounts: tuple[str, ...] = ()
+    # Noms propres que la transcription des vocaux doit reconnaître (séparés par des virgules).
+    vocabulary: str = "EPUR, CCTI, Alliance Industrie, Perrier, Béziers, Veolia, CABM, DN, NGF, inox"
     state_dir: Path = ROOT / "state"
+
+
+def is_inside(path, folders) -> bool:
+    """Vrai si `path` est dans l'un des dossiers (comparaison insensible à la casse sous Windows)."""
+    target = os.path.normcase(os.path.realpath(path))
+    for folder in folders:
+        root = os.path.normcase(os.path.realpath(folder))
+        if target == root or target.startswith(root.rstrip(os.sep) + os.sep):
+            return True
+    return False
 
 
 def load_config() -> Config:
@@ -37,6 +71,20 @@ def load_config() -> Config:
         model=os.getenv("CLAUDE_MODEL", "claude-sonnet-5-5"),
         max_budget_usd=float(os.getenv("MAX_BUDGET_USD", "0.50")),
         poll_seconds=int(os.getenv("POLL_SECONDS", "60")),
+        telegram_allowed=[int(n) for n in (os.getenv("TELEGRAM_ALLOWED") or os.getenv("TELEGRAM_ALLOWED_USER_IDS", "")).split(",") if n.strip()],
+        whisper_model=os.getenv("WHISPER_MODEL", "small"),
+        whisper_device=os.getenv("WHISPER_APPAREIL", "cpu").strip().lower(),
+        voice_replies=os.getenv("REPONSE_VOCALE", "1") != "0",
+        routine_url=os.getenv("ROUTINE_URL", ""),
+        routine_token=os.getenv("ROUTINE_TOKEN", ""),
+        tts_voice=os.getenv("VOIX", "fr_FR-siwis-medium"),
+        read_only_dirs=[Path(d.strip()).expanduser() for d in os.getenv("READ_ONLY_DIRS", "").split(";") if d.strip()],
+        cr_root=Path(os.environ["CR_DOSSIER_CHANTIERS"].strip()).expanduser() if os.getenv("CR_DOSSIER_CHANTIERS", "").strip() else None,
+        cr_subfolder=os.getenv("CR_SOUS_DOSSIER", "00 - ETUDE"),
+        gmail_perso=os.getenv("GMAIL_PERSO_ADRESSE", ""),
+        gmail_perso_password=os.getenv("GMAIL_PERSO_MOT_DE_PASSE", ""),
+        vocabulary=os.getenv("VOCABULAIRE", "EPUR, CCTI, Alliance Industrie, Perrier, Béziers, Veolia, CABM, DN, NGF, inox"),
+        outlook_accounts=tuple(a.strip() for a in os.getenv("OUTLOOK_COMPTES", "").split(",") if a.strip()),
     )
     for d in (cfg.projects_dir, cfg.notes_dir, cfg.state_dir):
         d.mkdir(parents=True, exist_ok=True)

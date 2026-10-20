@@ -3,3 +3,16 @@ google-api-python-client
 google-auth-oauthlib
 python-dotenv
 pytest
+faster-whisper
+openpyxl
+python-docx
+pypdf
+icalendar
+recurring-ical-events
+piper-tts
+pillow
+ifcopenshell
+playwright
+pywin32; sys_platform == "win32"
+nvidia-cublas-cu12; sys_platform == "win32"
+nvidia-cudnn-cu12==9.*; sys_platform == "win32"
