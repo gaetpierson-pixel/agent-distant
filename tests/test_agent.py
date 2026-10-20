@@ -862,3 +862,16 @@ def test_transcription_falls_back_to_cpu_when_gpu_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(voice, "_model", fake_model)
     monkeypatch.setattr(voice, "decode", lambda p: np.zeros(16000, dtype=np.float32))
     assert voice.transcribe(tmp_path / "v.ogg", "large-v3-turbo", "EPUR", device="cuda") == "Bonjour EPUR"
+
+
+def test_only_one_agent_runs_at_a_time():
+    import pytest
+
+    from agent.__main__ import ALREADY_RUNNING, _single_instance
+
+    first = _single_instance()
+    with pytest.raises(SystemExit) as stop:
+        _single_instance()
+    assert stop.value.code == ALREADY_RUNNING
+    first.close()
+    _single_instance().close()  # libéré dès que le premier s'arrête

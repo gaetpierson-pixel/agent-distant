@@ -8,6 +8,7 @@
 import asyncio
 import logging
 import os
+import socket
 import sys
 
 from .brain import Brain
@@ -25,12 +26,30 @@ async def _run_channels(email_task, brain: Brain, cfg) -> None:
     await asyncio.gather(*tasks)
 
 
+# Code de sortie quand un autre agent tourne déjà : demarrer-agent.bat s'arrête alors au lieu de relancer.
+ALREADY_RUNNING = 3
+LOCK_PORT = 47613
+
+
+def _single_instance():
+    """Une seule instance à la fois : le port local reste pris tant que l'agent vit, et se libère s'il meurt."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", LOCK_PORT))
+    except OSError:
+        logging.info("Un agent tourne déjà : celui-ci s'arrête.")
+        sys.exit(ALREADY_RUNNING)
+    return sock
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if len(sys.argv) < 2:
         print(__doc__)
         return
     cmd, cfg = sys.argv[1], load_config()
+    if cmd == "lancer":
+        _lock = _single_instance()  # noqa: F841 - gardé ouvert jusqu'à la fin du processus
 
     if cmd == "demander":
         print(asyncio.run(Brain(cfg).handle(" ".join(sys.argv[2:]), channel="terminal")))
